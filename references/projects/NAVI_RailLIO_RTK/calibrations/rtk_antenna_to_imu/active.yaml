@@ -1,9 +1,0 @@
-status: candidate
-calibration_id: rtk_antenna_to_imu_unknown
-parent_frame: imu_link
-child_frame: rtk_antenna
-convention: T_imu_rtk_antenna
-meaning: p_imu = T_imu_rtk_antenna * p_rtk_antenna
-translation_m: unknown
-rotation: unknown
-required_action: measure antenna lever arm and record antenna phase-center convention
