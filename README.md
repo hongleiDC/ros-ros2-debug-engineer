@@ -10,6 +10,107 @@
 - 编译、运行、回归测试和 incident 记录
 - 自动维护目标项目自己的工程知识库
 
+## 安装
+
+### 方法一：打包后安装到 ChatGPT
+
+先克隆仓库：
+
+```bash
+git clone https://github.com/hongleiDC/ros-ros2-debug-engineer.git
+cd ros-ros2-debug-engineer
+```
+
+确认 Skill 的入口文件位于仓库根目录：
+
+```text
+ros-ros2-debug-engineer/
+├── SKILL.md
+├── agents/openai.yaml
+├── references/
+└── scripts/
+```
+
+将整个 Skill 目录打包为 ZIP。压缩包中必须直接包含 `SKILL.md`，不能在外面再多套一层无关目录：
+
+```bash
+zip -r skill.zip . \
+  -x '.git/*' \
+  -x '.github/*' \
+  -x '*.DS_Store' \
+  -x '__pycache__/*'
+```
+
+然后在 ChatGPT 中打开 `/skills`，选择创建或上传 Skill，并上传生成的 `skill.zip`。界面文字可能随客户端版本略有不同。
+
+安装完成后，可以用下面的请求测试是否触发：
+
+```text
+请使用 ros-ros2-debug-engineer 检查这个 ROS2 仓库的 QoS、时间戳、TF 和外参问题。
+```
+
+> Skill 压缩包应保持精简，不要把 rosbag、点云、模型权重或项目长期知识打包进去。
+
+### 方法二：本地开发和修改
+
+直接在克隆后的仓库中修改 `SKILL.md`、`references/` 或 `scripts/`。修改完成后重新生成 `skill.zip` 并在 ChatGPT 中重新上传，以使新版本生效。
+
+建议先检查仓库中是否混入了项目专属知识：
+
+```bash
+find references -maxdepth 3 -type d
+```
+
+Skill 仓库中不应存在类似下面的目录：
+
+```text
+references/projects/NAVI_RailLIO_RTK/
+```
+
+### 目标 ROS 项目的初始化
+
+安装 Skill 后，还需要在每个实际 ROS 项目仓库根目录增加项目标识文件：
+
+```yaml
+# .ros_debug_project.yaml
+schema_version: 1
+project_id: NAVI_RailLIO_RTK
+knowledge_dir: project_knowledge
+```
+
+并建立项目自己的知识库：
+
+```bash
+mkdir -p project_knowledge/{devices,calibrations,bags,incidents,decisions,regression_tests}
+touch project_knowledge/CHANGELOG.md
+```
+
+建议至少创建：
+
+```text
+project_knowledge/
+├── README.md
+├── project.yaml
+├── active_configuration.yaml
+├── topics.yaml
+├── timing.yaml
+├── devices/
+├── calibrations/
+├── bags/
+├── incidents/
+├── decisions/
+├── regression_tests/
+└── CHANGELOG.md
+```
+
+可以使用本 Skill 仓库中的脚本检查项目知识库：
+
+```bash
+python3 scripts/validate_knowledge.py /path/to/target-project/project_knowledge
+```
+
+调试过程中确认的新设备信息、外参、时间偏移、bag 结论和 incident，应提交到目标 ROS 项目仓库，而不是提交到本 Skill 仓库。
+
 ## 重要设计原则
 
 Skill 仓库只保存通用规则、schema、模板和脚本。
