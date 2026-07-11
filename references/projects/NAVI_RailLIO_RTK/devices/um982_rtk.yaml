@@ -1,0 +1,40 @@
+device_id: um982_mobile_01
+manufacturer: taobotics
+model: t-rtk um982 mobile
+serial_number: unknown
+firmware_version: unknown
+driver_package: unknown
+driver_commit: unknown
+status: measured
+interfaces:
+  source_topics:
+    gnss: /handsfree/rtk/gnss
+    raw: /handsfree/rtk/raw
+    fix_status: /handsfree/rtk/fix_status
+    heading: /handsfree/rtk/heading
+    speed: /handsfree/rtk/speed
+    cog: /handsfree/rtk/cog
+intrinsics:
+  default_update_rate_hz: 2
+  maximum_update_rate_hz: 20
+  rtk_horizontal_rms_m: 0.008
+  rtk_vertical_rms_m: 0.015
+  pps_rms_ns: 20
+  heading_accuracy_deg_at_1m_baseline: 0.1
+  antenna_phase_center_offset_m: unknown
+  dual_antenna_baseline_m: unknown
+timing:
+  clock_domain: gnss
+  authoritative_measurement_time: gps_week_and_seconds_of_week_from_packet
+  arrival_time_allowed_for_fusion: false
+  preserve_raw_epoch_fields: true
+frame:
+  antenna_frame: rtk_antenna
+  output_frame: rtk_enu
+quality_states: [rtk_fixed, rtk_float, single, invalid]
+quality_priority:
+  - raw_packet_or_fix_status
+  - navsatfix_status_as_fallback
+known_issues:
+  - navsatfix status must not overwrite an already identified rtk_fixed or rtk_float state
+  - position, status, heading, and valid flag should be emitted atomically for the same epoch

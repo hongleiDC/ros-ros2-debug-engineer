@@ -1,0 +1,18 @@
+required:
+  - device_id
+  - manufacturer
+  - model
+  - interfaces
+  - timing
+  - frame
+  - status
+status_values: [candidate, measured, verified, deprecated]
+recommended:
+  - serial_number
+  - firmware_version
+  - driver_package
+  - driver_commit
+  - intrinsics
+  - units
+  - known_issues
+  - verification

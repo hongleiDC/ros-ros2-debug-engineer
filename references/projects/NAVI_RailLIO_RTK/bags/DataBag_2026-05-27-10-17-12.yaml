@@ -1,0 +1,33 @@
+bag_id: DataBag_2026-05-27-10-17-12
+format: rosbag1
+path: bags/DataBag_2026-05-27-10-17-12/data.bag
+status: verified
+recording:
+  scene: static_initialization
+  duration_sec: unknown
+  static: true
+topics:
+  /lidar:
+    type: livox_ros_driver2/CustomMsg
+    observed_rate_hz: 10
+  /handsfree/imu:
+    type: sensor_msgs/Imu
+    observed_rate_hz: 800
+  /odom:
+    type: nav_msgs/Odometry
+    observed_rate_hz: 10
+measurements:
+  imu_acceleration_norm_mps2: 9.82
+  imu_gyro_norm_radps: 0.009
+results:
+  - ct-lio consumed lidar custom messages
+  - static imu initialization succeeded
+  - imu_acc_scale 1.0 validated
+  - odom output stable around 10 hz
+limitations:
+  - static bag cannot validate lidar-imu time offset during motion
+  - static bag cannot validate dynamic extrinsic accuracy
+replay:
+  use_sim_time: true
+  publish_static_tf: false
+  reason: bag already contains /tf_static

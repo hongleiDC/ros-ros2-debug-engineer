@@ -1,0 +1,15 @@
+required:
+  - bag_id
+  - format
+  - recording
+  - topics
+  - status
+status_values: [candidate, measured, verified, deprecated]
+recommended:
+  - path
+  - sha256
+  - software
+  - hardware
+  - timing_analysis
+  - anomalies
+  - regression_results

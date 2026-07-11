@@ -1,0 +1,10 @@
+required:
+  - calibration_id
+  - parent_frame
+  - child_frame
+  - convention
+  - translation_m
+  - rotation
+  - status
+  - source
+status_values: [candidate, measured, verified, deprecated]

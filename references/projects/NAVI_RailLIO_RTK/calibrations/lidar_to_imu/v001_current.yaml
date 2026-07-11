@@ -1,0 +1,20 @@
+calibration_id: lidar_to_imu_v001_current
+status: verified
+parent_frame: imu_link
+child_frame: lidar_link
+convention: T_imu_lidar
+meaning: p_imu = T_imu_lidar * p_lidar
+translation_m:
+  x: -0.011
+  y: -0.02329
+  z: 0.04412
+rotation:
+  type: matrix_row_major
+  value: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+source:
+  type: current_ct_lio_configuration
+  path: mapping_geoscan_s2.yaml
+verification:
+  bag: DataBag_2026-05-27-10-17-12
+  scope: static initialization and stable odom output; dynamic rotational accuracy still requires motion validation
+confidence: medium

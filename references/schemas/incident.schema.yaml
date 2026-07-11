@@ -1,0 +1,8 @@
+required_sections:
+  - symptom
+  - root_cause
+  - evidence
+  - fix
+  - regression
+  - forbidden_regressions
+status_values: [open, mitigated, verified, deprecated]

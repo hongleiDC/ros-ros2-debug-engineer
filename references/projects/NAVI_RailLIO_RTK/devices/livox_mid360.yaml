@@ -1,0 +1,36 @@
+device_id: livox_mid360_01
+manufacturer: livox
+model: mid-360
+serial_number: unknown
+firmware_version: unknown
+driver_package: livox_ros_driver2
+driver_commit: unknown
+status: measured
+interfaces:
+  ros1:
+    topic: /lidar
+    type: livox_ros_driver2/CustomMsg
+  ros2:
+    topic: /lidar_time
+    type: sensor_msgs/msg/PointCloud2
+intrinsics:
+  expected_scan_rate_hz: 10
+  point_fields_required: [x, y, z]
+  intensity_fields_accepted: [intensity, reflectivity]
+  point_time_fields_accepted: [time, offset_time]
+  point_time_unit: unknown
+  blind_zone_m: unknown
+  range_m: unknown
+timing:
+  requires_point_level_time: true
+  point_time_semantics: relative_to_scan_reference
+  header_stamp_semantics: unknown
+frame:
+  frame_id: lidar_link
+  axis_convention: verify_from_driver
+known_issues:
+  - converting CustomMsg to PointCloud2 must preserve point-level time
+  - wrong point-time units cause deskew distortion
+verification:
+  static_bag: DataBag_2026-05-27-10-17-12
+  verified_scope: ros1 custommsg consumed by ct-lio and odom output around 10 hz

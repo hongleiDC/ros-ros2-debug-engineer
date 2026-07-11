@@ -1,0 +1,45 @@
+status: measured
+ros1:
+  lidar:
+    topic: /lidar
+    type: livox_ros_driver2/CustomMsg
+    expected_rate_hz: 10
+  imu:
+    topic: /handsfree/imu
+    type: sensor_msgs/Imu
+    expected_rate_hz: 800
+  odom:
+    topic: /odom
+    type: nav_msgs/Odometry
+    expected_rate_hz: 10
+ros2:
+  lidar:
+    topic: /lidar_time
+    type: sensor_msgs/msg/PointCloud2
+    expected_rate_hz: 10
+    required_fields: [x, y, z]
+    accepted_intensity_fields: [intensity, reflectivity]
+    accepted_point_time_fields: [time, offset_time]
+  imu:
+    topic: /handsfree/imu
+    type: sensor_msgs/msg/Imu
+    expected_rate_hz: 800
+  odom:
+    topic: /odom
+    type: nav_msgs/msg/Odometry
+    expected_rate_hz: 10
+rtk_source_topics:
+  gnss: /handsfree/rtk/gnss
+  raw: /handsfree/rtk/raw
+  fix_status: /handsfree/rtk/fix_status
+  heading: /handsfree/rtk/heading
+  speed: /handsfree/rtk/speed
+  cog: /handsfree/rtk/cog
+rtk_message_types:
+  status: candidate
+  note: inspect runtime topic types before generating code
+bridge_outputs:
+  enu: /rail/rtk/enu
+  status: /rail/rtk/status
+  odom: /rail/rtk/odom
+  diagnostics: /rail/sensor/diagnostics
