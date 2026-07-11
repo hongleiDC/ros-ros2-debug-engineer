@@ -19,11 +19,11 @@ description: develop, review, migrate, and debug ros1 and ros2 code, packages, l
    - 由其中的 `knowledge_dir` 定位知识库；
    - 默认候选目录为 `project_knowledge/`；
    - 不得把项目知识默认写入本 Skill 的 `references/`。
-3. 若项目知识库存在，先读取：
+3. 若项目知识库不存在，运行 `scripts/init_project_knowledge.py` 在目标项目仓库中初始化，不要手工创建不完整目录。
+4. 若项目知识库存在，先读取：
    - `README.md`、`project.yaml`、`active_configuration.yaml`；
    - `topics.yaml`、`timing.yaml`；
    - `devices/`、`calibrations/`、`bags/`、`incidents/`、`decisions/`、`regression_tests/`。
-4. 若知识库不存在，在目标项目仓库中按 `references/schemas/` 初始化最小结构，并创建 `.ros_debug_project.yaml`。
 5. 根据任务读取通用规则：
    - [调试工作流](references/core/debugging_workflow.md)
    - [时间与同步](references/core/time_sync.md)
@@ -79,10 +79,11 @@ description: develop, review, migrate, and debug ros1 and ros2 code, packages, l
 2. 已从数据测量：`measured`。
 3. 修复后通过回归：`verified`。
 4. 被新结论替代：保留旧记录并标记 `deprecated`。
-5. 每次写入都追加目标项目知识库的 `CHANGELOG.md`，包含日期、修改文件、原因、证据和验证方法。
-6. 使用 `scripts/validate_knowledge.py <knowledge_dir>` 验证。
-7. 通过 GitHub 操作时，将知识更新提交到目标项目仓库，而不是 Skill 仓库。
-8. 向用户明确报告目标仓库、commit SHA、新增、修改、弃用内容和验证结果。
+5. 每次写入都追加目标项目知识库的 `CHANGELOG.md`，包含日期、修改文件、旧值、新值、原因、证据和验证方法。
+6. 优先使用 `scripts/update_knowledge.py`；默认禁止静默修改 `verified` 记录。
+7. 使用 `scripts/validate_knowledge.py <knowledge_dir>` 验证；验证失败时回滚，不提交无效知识。
+8. 通过 GitHub 操作时，将知识更新提交到目标项目仓库，而不是 Skill 仓库。
+9. 向用户明确报告目标仓库、commit SHA、新增、修改、弃用内容和验证结果。
 
 若目标项目仓库不可写，不得声称已持久化；应生成补丁或完整知识目录供用户应用。
 
@@ -96,8 +97,10 @@ description: develop, review, migrate, and debug ros1 and ros2 code, packages, l
 
 ## 资源与脚本
 
-- `scripts/validate_knowledge.py`：检查任意目标项目知识目录。
-- `scripts/update_knowledge.py`：更新任意目标项目 YAML 并追加变更日志。
+- `scripts/init_project_knowledge.py`：在目标仓库初始化完整知识目录和 `.ros_debug_project.yaml`。
+- `scripts/validate_knowledge.py`：按 `references/schemas/` 检查目标项目知识目录。
+- `scripts/update_knowledge.py`：原子更新 YAML、保护 `verified` 记录、验证并追加变更日志。
 - `scripts/new_incident.py`：在目标项目知识目录生成标准 incident。
-- `references/schemas/`：设备、标定、数据包和 incident 的通用字段规范。
+- `scripts/package_skill.py`：验证 Skill 基本结构并生成 `dist/skill.zip`。
+- `references/schemas/`：项目、设备、标定、时间、数据包、decision 和回归测试字段规范。
 - `references/core/project_discovery.md`：项目知识库发现、初始化和提交规则。
