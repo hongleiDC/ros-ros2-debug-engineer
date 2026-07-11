@@ -12,129 +12,72 @@
 
 ## 安装
 
-### 方法一：打包后安装到 ChatGPT
-
-先克隆仓库：
+### 1. 克隆并安装依赖
 
 ```bash
 git clone https://github.com/hongleiDC/ros-ros2-debug-engineer.git
 cd ros-ros2-debug-engineer
+python3 -m pip install -r requirements.txt
 ```
 
-确认 Skill 的入口文件位于仓库根目录：
-
-```text
-ros-ros2-debug-engineer/
-├── SKILL.md
-├── agents/openai.yaml
-├── references/
-└── scripts/
-```
-
-将整个 Skill 目录打包为 ZIP。压缩包中必须直接包含 `SKILL.md`，不能在外面再多套一层无关目录：
+### 2. 运行测试和打包
 
 ```bash
-zip -r skill.zip . \
-  -x '.git/*' \
-  -x '.github/*' \
-  -x '*.DS_Store' \
-  -x '__pycache__/*'
+python3 -m unittest discover -s tests -v
+python3 scripts/package_skill.py . dist
 ```
 
-然后在 ChatGPT 中打开 `/skills`，选择创建或上传 Skill，并上传生成的 `skill.zip`。界面文字可能随客户端版本略有不同。
+成功后生成：
 
-安装完成后，可以用下面的请求测试是否触发：
+```text
+dist/skill.zip
+```
+
+打包脚本会检查 `SKILL.md` frontmatter、`agents/openai.yaml`、本地引用和 25 MB 大小限制，并排除 `.git`、CI、测试缓存和旧产物。
+
+### 3. 安装到 ChatGPT
+
+在 ChatGPT 中打开 `/skills`，选择创建或上传 Skill，并上传 `dist/skill.zip`。界面文字可能随客户端版本略有不同。
+
+安装后可用以下请求测试：
 
 ```text
 请使用 ros-ros2-debug-engineer 检查这个 ROS2 仓库的 QoS、时间戳、TF 和外参问题。
 ```
 
-> Skill 压缩包应保持精简，不要把 rosbag、点云、模型权重或项目长期知识打包进去。
+> 不要把 rosbag、点云、模型权重或具体项目长期知识打包进 Skill。
 
-### 方法二：本地开发和修改
+## 初始化目标 ROS 项目
 
-直接在克隆后的仓库中修改 `SKILL.md`、`references/` 或 `scripts/`。修改完成后重新生成 `skill.zip` 并在 ChatGPT 中重新上传，以使新版本生效。
-
-建议先检查仓库中是否混入了项目专属知识：
+每个实际 ROS 项目必须维护自己的知识库。运行：
 
 ```bash
-find references -maxdepth 3 -type d
+python3 scripts/init_project_knowledge.py \
+  /path/to/target-project \
+  --project-id NAVI_RailLIO_RTK
 ```
 
-Skill 仓库中不应存在类似下面的目录：
-
-```text
-references/projects/NAVI_RailLIO_RTK/
-```
-
-### 目标 ROS 项目的初始化
-
-安装 Skill 后，还需要在每个实际 ROS 项目仓库根目录增加项目标识文件：
-
-```yaml
-# .ros_debug_project.yaml
-schema_version: 1
-project_id: NAVI_RailLIO_RTK
-knowledge_dir: project_knowledge
-```
-
-并建立项目自己的知识库：
-
-```bash
-mkdir -p project_knowledge/{devices,calibrations,bags,incidents,decisions,regression_tests}
-touch project_knowledge/CHANGELOG.md
-```
-
-建议至少创建：
-
-```text
-project_knowledge/
-├── README.md
-├── project.yaml
-├── active_configuration.yaml
-├── topics.yaml
-├── timing.yaml
-├── devices/
-├── calibrations/
-├── bags/
-├── incidents/
-├── decisions/
-├── regression_tests/
-└── CHANGELOG.md
-```
-
-可以使用本 Skill 仓库中的脚本检查项目知识库：
-
-```bash
-python3 scripts/validate_knowledge.py /path/to/target-project/project_knowledge
-```
-
-调试过程中确认的新设备信息、外参、时间偏移、bag 结论和 incident，应提交到目标 ROS 项目仓库，而不是提交到本 Skill 仓库。
-
-## 重要设计原则
-
-Skill 仓库只保存通用规则、schema、模板和脚本。
-
-具体项目的设备、话题、内参、外参、时间偏移、bag 分析、故障经验和架构决定，必须保存在对应项目代码仓库中：
+该命令创建：
 
 ```text
 <target-project>/
 ├── .ros_debug_project.yaml
 └── project_knowledge/
+    ├── README.md
     ├── project.yaml
     ├── active_configuration.yaml
     ├── topics.yaml
     ├── timing.yaml
+    ├── CHANGELOG.md
     ├── devices/
     ├── calibrations/
     ├── bags/
     ├── incidents/
     ├── decisions/
-    ├── regression_tests/
-    └── CHANGELOG.md
+    └── regression_tests/
 ```
 
-Skill 通过 `.ros_debug_project.yaml` 定位知识库，例如：
+`.ros_debug_project.yaml` 示例：
 
 ```yaml
 schema_version: 1
@@ -142,21 +85,80 @@ project_id: NAVI_RailLIO_RTK
 knowledge_dir: project_knowledge
 ```
 
-## 工作方式
+## 验证和更新知识库
 
-1. 确定目标项目仓库。
-2. 读取 `.ros_debug_project.yaml` 和项目知识库。
-3. 复用已有设备、标定、时间和 incident 结论。
-4. 编写或调试代码并执行验证。
-5. 将新结论直接提交到目标项目仓库的知识库。
-6. 向用户报告修改内容、验证结果和 commit SHA。
+验证：
+
+```bash
+python3 scripts/validate_knowledge.py \
+  /path/to/target-project/project_knowledge
+```
+
+安全更新一个字段：
+
+```bash
+python3 scripts/update_knowledge.py \
+  /path/to/target-project/project_knowledge \
+  active_configuration.yaml \
+  runtime.use_sim_time \
+  true \
+  --status measured \
+  --reason "bag replay configuration" \
+  --evidence "launch file and runtime parameter"
+```
+
+预览而不写入：
+
+```bash
+python3 scripts/update_knowledge.py ... --dry-run
+```
+
+默认禁止修改顶层状态为 `verified` 的记录。确需替换时必须显式增加：
+
+```text
+--allow-replace-verified
+```
+
+并在 `--reason` 和 `--evidence` 中说明依据。
+
+创建 incident：
+
+```bash
+python3 scripts/new_incident.py \
+  /path/to/target-project/project_knowledge \
+  INC-0006 \
+  "rtk timestamp mismatch"
+```
+
+## 重要设计原则
+
+Skill 仓库只保存通用规则、schema、模板和脚本。
+
+具体项目的设备、话题、内参、外参、时间偏移、bag 分析、故障经验和架构决定，必须保存在对应项目代码仓库中。调试过程中确认的新事实应提交到目标 ROS 项目的 `project_knowledge/`，而不是本 Skill 仓库。
+
+## 开发与 CI
+
+本仓库的 GitHub Actions 会自动执行：
+
+```text
+依赖安装
+→ 单元测试
+→ Skill 结构验证
+→ 生成 skill.zip 构件
+```
+
+本地修改后执行：
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 scripts/package_skill.py . dist
+```
 
 ## 仓库内容
 
 - `SKILL.md`：主要工作流和约束
 - `references/core/`：通用 ROS 调试规则
-- `references/schemas/`：知识库字段规范
-- `scripts/`：知识验证、更新和 incident 创建脚本
+- `references/schemas/`：知识库 JSON Schema 与 incident 规范
+- `scripts/`：初始化、验证、更新、incident 创建和打包脚本
+- `tests/`：知识工具回归测试
 - `agents/openai.yaml`：Skill UI 元数据
-
-本仓库不应保存任何具体业务项目的长期知识副本。
