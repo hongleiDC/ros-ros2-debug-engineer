@@ -1,10 +1,81 @@
-required:
-  - calibration_id
-  - parent_frame
-  - child_frame
-  - convention
-  - translation_m
-  - rotation
-  - status
-  - source
-status_values: [candidate, measured, verified, deprecated]
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: calibration.schema.yaml
+type: object
+required: [schema_version, calibration_id, parent_frame, child_frame, convention, translation_m, rotation, status, source]
+properties:
+  schema_version:
+    const: 1
+  calibration_id:
+    type: string
+    pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  parent_frame:
+    type: string
+    minLength: 1
+  child_frame:
+    type: string
+    minLength: 1
+  convention:
+    type: string
+    minLength: 1
+  translation_m:
+    type: array
+    prefixItems:
+      - {type: number}
+      - {type: number}
+      - {type: number}
+    minItems: 3
+    maxItems: 3
+  rotation:
+    oneOf:
+      - type: object
+        required: [quaternion_xyzw]
+        properties:
+          quaternion_xyzw:
+            type: array
+            prefixItems:
+              - {type: number}
+              - {type: number}
+              - {type: number}
+              - {type: number}
+            minItems: 4
+            maxItems: 4
+        additionalProperties: false
+      - type: object
+        required: [rpy_rad]
+        properties:
+          rpy_rad:
+            type: array
+            prefixItems:
+              - {type: number}
+              - {type: number}
+              - {type: number}
+            minItems: 3
+            maxItems: 3
+        additionalProperties: false
+      - type: object
+        required: [matrix_row_major]
+        properties:
+          matrix_row_major:
+            type: array
+            items: {type: number}
+            minItems: 9
+            maxItems: 9
+        additionalProperties: false
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  source:
+    type: object
+    required: [type, reference]
+    properties:
+      type:
+        type: string
+      reference:
+        type: string
+    additionalProperties: true
+  applies_to:
+    type: object
+  evidence:
+    type: array
+    items:
+      type: object
+additionalProperties: true

@@ -1,0 +1,46 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: project_model.schema.yaml
+type: object
+required: [schema_version, status, generated_at, repository, environment, packages, artifacts, capabilities, coverage, limitations]
+properties:
+  schema_version:
+    const: 1
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  generated_at:
+    type: [string, 'null']
+  repository:
+    type: object
+  environment:
+    type: object
+  packages:
+    type: array
+    items:
+      type: object
+      required: [name, path, format, build_type, dependencies]
+  artifacts:
+    type: object
+  capabilities:
+    type: object
+  coverage:
+    type: object
+    required: [understanding_level, static_scan]
+    properties:
+      understanding_level:
+        enum: [L0, L1, L2, L3, L4, L5]
+      static_scan:
+        type: boolean
+      build_verified:
+        type: boolean
+      runtime_snapshot:
+        type: boolean
+      reproduction:
+        type: boolean
+      regression_verified:
+        type: boolean
+    additionalProperties: true
+  limitations:
+    type: array
+    items:
+      type: string
+additionalProperties: true

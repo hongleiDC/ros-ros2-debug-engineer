@@ -1,0 +1,47 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: timing.schema.yaml
+type: object
+required: [schema_version, status, clock_domains, topic_time_sources, offsets]
+properties:
+  schema_version:
+    const: 1
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  clock_domains:
+    type: object
+    additionalProperties:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+        status:
+          enum: [candidate, measured, verified, deprecated]
+      additionalProperties: true
+  topic_time_sources:
+    type: object
+    additionalProperties:
+      type: object
+      required: [source, status]
+      properties:
+        source:
+          type: string
+        status:
+          enum: [candidate, measured, verified, deprecated]
+      additionalProperties: true
+  offsets:
+    type: array
+    items:
+      type: object
+      required: [offset_id, equation, value_seconds, status]
+      properties:
+        offset_id:
+          type: string
+        equation:
+          type: string
+        value_seconds:
+          type: number
+        status:
+          enum: [candidate, measured, verified, deprecated]
+      additionalProperties: true
+additionalProperties: true

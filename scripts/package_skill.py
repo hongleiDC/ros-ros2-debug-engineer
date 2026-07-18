@@ -1,49 +1,102 @@
 #!/usr/bin/env python3
-"""Validate the Skill structure and create skill.zip."""
+"""Validate the Skill structure and create an exact skill.zip bundle."""
 from __future__ import annotations
 
 import argparse
+import py_compile
 import re
+import tempfile
 import zipfile
 from pathlib import Path
+from typing import Iterable
+
 import yaml
 
 MAX_BYTES = 25 * 1024 * 1024
-EXCLUDED = {".git", ".github", "__pycache__", ".pytest_cache", "dist", ".venv", "venv"}
+EXCLUDED = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", "dist", ".venv", "venv"}
+LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
 
-def validate(root: Path) -> list[str]:
-    errors: list[str] = []
+def validate_frontmatter(root: Path, errors: list[str]) -> None:
     skill = root / "SKILL.md"
-    agent = root / "agents" / "openai.yaml"
     if not skill.is_file():
-        return ["missing SKILL.md"]
-    if not agent.is_file():
-        errors.append("missing agents/openai.yaml")
+        errors.append("missing SKILL.md")
+        return
     text = skill.read_text(encoding="utf-8")
     match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     if not match:
         errors.append("SKILL.md must start with YAML frontmatter")
-    else:
+        return
+    try:
         frontmatter = yaml.safe_load(match.group(1))
-        if not isinstance(frontmatter, dict) or set(frontmatter) != {"name", "description"}:
-            errors.append("frontmatter must contain only name and description")
-        else:
-            name = frontmatter.get("name")
-            description = frontmatter.get("description")
-            if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
-                errors.append("name must be lowercase kebab-case")
-            if not isinstance(description, str) or not description.strip():
-                errors.append("description must be non-empty")
-            elif description != description.lower():
-                errors.append("description must be lowercase")
-    for reference in re.findall(r"\((references/[^)]+)\)", text):
-        if not (root / reference).exists():
-            errors.append(f"missing referenced resource: {reference}")
+    except yaml.YAMLError as exc:
+        errors.append(f"invalid SKILL.md frontmatter: {exc}")
+        return
+    if not isinstance(frontmatter, dict) or set(frontmatter) != {"name", "description"}:
+        errors.append("frontmatter must contain only name and description")
+        return
+    name = frontmatter.get("name")
+    description = frontmatter.get("description")
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+        errors.append("name must be lowercase kebab-case")
+    if not isinstance(description, str) or len(description.strip()) < 40:
+        errors.append("description must clearly describe capability and triggering context")
+
+
+def validate_agent(root: Path, errors: list[str]) -> None:
+    path = root / "agents" / "openai.yaml"
+    if not path.is_file():
+        errors.append("missing agents/openai.yaml")
+        return
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        errors.append(f"invalid agents/openai.yaml: {exc}")
+        return
+    interface = data.get("interface") if isinstance(data, dict) else None
+    if not isinstance(interface, dict):
+        errors.append("agents/openai.yaml must contain interface mapping")
+        return
+    for key in ("display_name", "short_description"):
+        if not isinstance(interface.get(key), str) or not interface[key].strip():
+            errors.append(f"agents/openai.yaml missing interface.{key}")
+
+
+def validate_links(root: Path, errors: list[str]) -> None:
+    for markdown in root.rglob("*.md"):
+        if any(part in EXCLUDED for part in markdown.relative_to(root).parts):
+            continue
+        text = markdown.read_text(encoding="utf-8")
+        for target in LINK_RE.findall(text):
+            if target.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            clean = target.split("#", 1)[0]
+            if clean and not (markdown.parent / clean).resolve().exists():
+                errors.append(f"{markdown.relative_to(root)}: missing linked resource {target}")
+
+
+def validate_scripts(root: Path, errors: list[str]) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        for path in sorted((root / "scripts").glob("*.py")):
+            try:
+                py_compile.compile(str(path), cfile=str(Path(tmp) / f"{path.stem}.pyc"), doraise=True)
+            except py_compile.PyCompileError as exc:
+                errors.append(f"{path.relative_to(root)}: {exc.msg}")
+
+
+def validate(root: Path) -> list[str]:
+    errors: list[str] = []
+    validate_frontmatter(root, errors)
+    validate_agent(root, errors)
+    validate_links(root, errors)
+    validate_scripts(root, errors)
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            errors.append(f"symlinks are not allowed in skill bundle: {path.relative_to(root)}")
     return errors
 
 
-def files(root: Path):
+def files(root: Path) -> Iterable[tuple[Path, Path]]:
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
@@ -70,6 +123,7 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / "skill.zip"
+    output.unlink(missing_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         for path, relative in files(root):
             archive.write(path, relative.as_posix())

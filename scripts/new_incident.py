@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Create a standard incident record without overwriting existing files."""
+"""Create a validated structured incident without path traversal or overwrite."""
 from __future__ import annotations
 
 import argparse
-import re
 from datetime import date
 from pathlib import Path
+import re
+
+import yaml
+
+from schema_utils import validate_knowledge
+
+INCIDENT_ID = re.compile(r"^INC-[0-9]{4,}$")
 
 
 def slugify(text: str) -> str:
@@ -14,17 +20,50 @@ def slugify(text: str) -> str:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser()
-    p.add_argument("project_dir", type=Path)
-    p.add_argument("incident_id", help="e.g. INC-0006")
-    p.add_argument("title")
-    args = p.parse_args()
-    out_dir = args.project_dir / "incidents"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("project_dir", type=Path, help="project_knowledge directory")
+    parser.add_argument("incident_id", help="e.g. INC-0006")
+    parser.add_argument("title")
+    args = parser.parse_args()
+
+    if not INCIDENT_ID.fullmatch(args.incident_id):
+        raise SystemExit("incident_id must match INC-0001")
+    if not args.title.strip():
+        raise SystemExit("title must not be empty")
+
+    knowledge = args.project_dir.resolve()
+    out_dir = (knowledge / "incidents").resolve()
+    if knowledge != out_dir and knowledge not in out_dir.parents:
+        raise SystemExit("incident directory escapes project knowledge")
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{args.incident_id}-{slugify(args.title)}.md"
+    out = (out_dir / f"{args.incident_id}-{slugify(args.title)}.yaml").resolve()
+    if out_dir not in out.parents:
+        raise SystemExit("incident path escapes incidents directory")
     if out.exists():
         raise SystemExit(f"refusing to overwrite: {out}")
-    out.write_text(f"""# {args.incident_id} {args.title}\n\n- status: open\n- date: {date.today().isoformat()}\n\n## symptom\n\nTODO\n\n## root_cause\n\nTODO\n\n## evidence\n\nTODO\n\n## fix\n\nTODO\n\n## regression\n\nTODO\n\n## forbidden_regressions\n\nTODO\n""", encoding="utf-8")
+
+    data = {
+        "schema_version": 1,
+        "incident_id": args.incident_id,
+        "title": args.title.strip(),
+        "status": "open",
+        "date": date.today().isoformat(),
+        "symptom": "TODO",
+        "hypotheses": [],
+        "root_cause": None,
+        "evidence": [],
+        "fix": None,
+        "regression": [],
+        "forbidden_regressions": [],
+    }
+    out.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    schema_dir = Path(__file__).resolve().parents[1] / "references" / "schemas"
+    errors = validate_knowledge(knowledge, schema_dir)
+    if errors:
+        out.unlink(missing_ok=True)
+        for error in errors:
+            print(f"- {error}")
+        return 1
     print(out)
     return 0
 

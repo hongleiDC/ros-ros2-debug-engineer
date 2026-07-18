@@ -1,0 +1,30 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: common.schema.yaml
+$defs:
+  status:
+    type: string
+    enum: [candidate, measured, verified, deprecated]
+  non_empty_string:
+    type: string
+    minLength: 1
+  evidence:
+    type: object
+    properties:
+      source_type:
+        type: string
+      source:
+        type: string
+      command:
+        type: string
+      code_commit:
+        type: string
+      bag_id:
+        type: string
+      device_id:
+        type: string
+      sample_count:
+        type: integer
+        minimum: 0
+      observed_at:
+        type: [string, 'null']
+    additionalProperties: true

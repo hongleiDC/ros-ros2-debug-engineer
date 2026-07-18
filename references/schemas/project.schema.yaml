@@ -1,0 +1,46 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: project.schema.yaml
+type: object
+required: [schema_version, project_id, status, ros, repository]
+properties:
+  schema_version:
+    const: 1
+  project_id:
+    type: string
+    pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  ros:
+    type: object
+    required: [families, distributions]
+    properties:
+      families:
+        type: array
+        items:
+          enum: [ros1, ros2]
+        uniqueItems: true
+      distributions:
+        type: array
+        items:
+          type: string
+      build_tools:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  repository:
+    type: object
+    required: [branch, commit]
+    properties:
+      branch:
+        type: string
+      commit:
+        type: string
+      dirty:
+        type: [boolean, 'null']
+    additionalProperties: true
+  evidence:
+    type: array
+    items:
+      type: object
+additionalProperties: true
