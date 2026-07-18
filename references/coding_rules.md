@@ -4,6 +4,15 @@
 
 读取现有 `package.xml`、`CMakeLists.txt`、`setup.py/setup.cfg`、工具链和 CI 后再决定标准。不要无理由升级整个项目的 C++ 或 Python 版本。
 
+## 公式与变量命名
+
+- 涉及数学模型时，先读取 `formula_variable_traceability.md`，建立公式符号到代码变量的映射表。
+- 关键变量名必须表达物理意义和单位，例如 `time_offset_s`、`angular_velocity_rad_s`、`position_map_m`。
+- 禁止用 `a`、`tmp`、`val`、`data2` 等名称承载长期存在或影响结果的关键量。
+- TF、外参、四元数和矩阵必须说明 frame、方向、维度和乘法约定。
+- 魔法数必须替换为具名常量，并注明来源、单位和适用范围。
+- 公式实现附近引用公式或推导编号，并用可手算样例测试符号、单位和边界。
+
 ## 通用
 
 - 参数声明默认值、类型、单位、范围和意义；启动时记录关键配置。

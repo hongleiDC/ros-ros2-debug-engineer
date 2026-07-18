@@ -1,0 +1,197 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: goal.schema.yaml
+type: object
+required:
+  - schema_version
+  - goal_id
+  - title
+  - status
+  - created_at
+  - updated_at
+  - request
+  - contract
+  - contract_hash
+  - scope
+  - progress
+  - revisions
+  - checkpoints
+  - completion
+properties:
+  schema_version:
+    const: 1
+  goal_id:
+    type: string
+    pattern: '^GOAL-[0-9]{4,}$'
+  title:
+    type: string
+    minLength: 1
+  status:
+    enum: [active, paused, completed, cancelled, superseded]
+  created_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time
+  request:
+    type: object
+    required: [original_request, desired_outcome]
+    properties:
+      original_request: {type: string, minLength: 1}
+      desired_outcome: {type: string, minLength: 1}
+      source: {type: [string, 'null']}
+    additionalProperties: true
+  contract:
+    type: object
+    required: [primary_goal, success_criteria, non_goals, constraints, invariants, stop_conditions]
+    properties:
+      primary_goal: {type: string, minLength: 1}
+      success_criteria:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [criterion_id, description, evidence_required, status, evidence]
+          properties:
+            criterion_id: {type: string, pattern: '^SC-[0-9]+$'}
+            description: {type: string, minLength: 1}
+            evidence_required: {type: string, minLength: 1}
+            status: {enum: [pending, met, failed, waived]}
+            evidence:
+              type: array
+              items: {type: string}
+            waiver_reason: {type: [string, 'null']}
+          additionalProperties: false
+      non_goals:
+        type: array
+        items: {type: string}
+      constraints:
+        type: array
+        items: {type: string}
+      invariants:
+        type: array
+        items: {type: string}
+      stop_conditions:
+        type: array
+        items: {type: string}
+    additionalProperties: false
+  contract_hash:
+    type: string
+    pattern: '^[0-9a-f]{64}$'
+  scope:
+    type: object
+    required: [repository, branch, commit, dirty, dirty_fingerprint, packages, files, interfaces]
+    properties:
+      repository: {type: string}
+      remote: {type: [string, 'null']}
+      branch: {type: string}
+      commit: {type: string}
+      dirty: {type: boolean}
+      dirty_fingerprint:
+        type: [string, 'null']
+        pattern: '^[0-9a-f]{64}$'
+      packages:
+        type: array
+        items: {type: string}
+      files:
+        type: array
+        items: {type: string}
+      interfaces:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+  progress:
+    type: object
+    required: [current_summary, current_milestone_id, milestones, blockers, next_action, drift_status, drift_reason, last_checkpoint_at]
+    properties:
+      current_summary: {type: string}
+      current_milestone_id: {type: [string, 'null'], pattern: '^M-[0-9]+$'}
+      milestones:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [milestone_id, description, status, evidence]
+          properties:
+            milestone_id: {type: string, pattern: '^M-[0-9]+$'}
+            description: {type: string, minLength: 1}
+            status: {enum: [pending, in_progress, completed, blocked, skipped]}
+            evidence:
+              type: array
+              items: {type: string}
+          additionalProperties: false
+      blockers:
+        type: array
+        items: {type: string}
+      next_action: {type: string, minLength: 1}
+      drift_status: {enum: [aligned, at_risk, drifted]}
+      drift_reason: {type: [string, 'null']}
+      last_checkpoint_at: {type: string, format: date-time}
+    additionalProperties: false
+  revisions:
+    type: array
+    items:
+      type: object
+      required: [timestamp, old_contract_hash, new_contract_hash, reason, user_authorized, authorization_evidence]
+      properties:
+        timestamp: {type: string, format: date-time}
+        old_contract_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        new_contract_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        reason: {type: string, minLength: 1}
+        user_authorized: {const: true}
+        authorization_evidence: {type: string, minLength: 1}
+      additionalProperties: true
+  checkpoints:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - checkpoint_id
+        - timestamp
+        - trigger
+        - goal_restatement
+        - active_criterion_ids
+        - milestone_id
+        - drift_status
+        - action_completed
+        - evidence
+        - decision
+        - next_action
+      properties:
+        checkpoint_id: {type: string, pattern: '^CP-[0-9]{4,}$'}
+        timestamp: {type: string, format: date-time}
+        trigger:
+          enum: [task_start, pre_action, tool_batch, code_change, experiment, failure, user_correction, handoff, resume, manual]
+        goal_restatement: {type: string, minLength: 1}
+        active_criterion_ids:
+          type: array
+          minItems: 1
+          items: {type: string, pattern: '^SC-[0-9]+$'}
+          uniqueItems: true
+        milestone_id: {type: string, pattern: '^M-[0-9]+$'}
+        drift_status: {enum: [aligned, at_risk, drifted]}
+        drift_reason: {type: [string, 'null']}
+        proposed_action: {type: [string, 'null']}
+        alignment_reason: {type: [string, 'null']}
+        expected_evidence: {type: [string, 'null']}
+        action_completed: {type: [string, 'null']}
+        evidence:
+          type: array
+          items: {type: string}
+        decision: {type: string, minLength: 1}
+        next_action: {type: string, minLength: 1}
+      additionalProperties: true
+  completion:
+    type: object
+    required: [finished_at, outcome, summary, unresolved, incomplete_reason]
+    properties:
+      finished_at: {type: [string, 'null'], format: date-time}
+      outcome: {enum: [pending, completed, paused, cancelled, superseded]}
+      summary: {type: [string, 'null']}
+      unresolved:
+        type: array
+        items: {type: string}
+      incomplete_reason: {type: [string, 'null']}
+    additionalProperties: false
+additionalProperties: false

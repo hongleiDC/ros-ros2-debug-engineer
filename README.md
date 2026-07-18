@@ -15,6 +15,23 @@
 
 只读取代码时，它只能说“理解静态结构”，不能说“理解真实运行行为”或“根因已经确认”。
 
+## 长任务不会遗忘核心目标
+
+复杂调试开始时，使用 `goal_guard.py` 建立结构化目标契约。目标契约保存用户原始请求、单一主目标、可验证成功判据、非目标、约束、里程碑、当前证据和唯一下一步。
+
+```bash
+python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "Fix timestamp root cause" \
+  --workspace /path/to/project \
+  --request "修复 IMU 时间回退" \
+  --desired-outcome "长期运行无回退且精度不下降" \
+  --primary-goal "消除 IMU 时间戳回退根因，同时保持定位精度" \
+  --success "连续运行无回退::运行日志和计数器" \
+  --success "ATE 不高于基线::同一 bag 评估报告" \
+  --milestone "建立可复现基线"
+```
+
+每次代码修改、参数调整或实验前，必须调用 `goal_guard.py guard`，明确动作关联的 `SC-*` 和 `M-*`。每完成 2 至 3 组工具调用、发生失败、用户纠正或任务恢复时，必须 checkpoint 并重新显示主目标。目标只能在用户明确授权后修订，旧目标哈希会保留。
+
 ## 主要能力
 
 - ROS 1 遗留项目和 ROS 2 项目的 C++ / Python 开发与调试；
@@ -26,6 +43,8 @@
 - LiDAR、IMU、GNSS/RTK 与 SLAM 数据链路；
 - ROS 1 到 ROS 2 迁移；
 - tracing、性能、单元测试、launch 集成和数据回归；
+- 核心目标契约、检查点和防漂移守卫；
+- 实验台账、实验指纹和重复实验阻止；
 - 可选的项目知识库和审计更新。
 
 ## 安全模式
@@ -113,6 +132,8 @@ python3 scripts/init_project_knowledge.py \
     ├── bags/
     ├── incidents/
     ├── decisions/
+    ├── goals/
+    ├── experiments/
     └── regression_tests/
 ```
 
