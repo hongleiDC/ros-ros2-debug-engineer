@@ -1,8 +1,48 @@
-required_sections:
-  - symptom
-  - root_cause
-  - evidence
-  - fix
-  - regression
-  - forbidden_regressions
-status_values: [open, mitigated, verified, deprecated]
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: incident.schema.yaml
+type: object
+required: [schema_version, incident_id, title, status, date, symptom, hypotheses, root_cause, evidence, fix, regression, forbidden_regressions]
+properties:
+  schema_version:
+    const: 1
+  incident_id:
+    type: string
+    pattern: '^INC-[0-9]{4,}$'
+  title:
+    type: string
+    minLength: 1
+  status:
+    enum: [open, mitigated, verified, deprecated]
+  date:
+    type: string
+    format: date
+  symptom:
+    type: string
+  hypotheses:
+    type: array
+    items:
+      type: object
+      required: [id, statement, status]
+      properties:
+        id: {type: string}
+        statement: {type: string}
+        status:
+          enum: [candidate, supported, contradicted, confirmed]
+      additionalProperties: true
+  root_cause:
+    type: [string, 'null']
+  evidence:
+    type: array
+    items:
+      type: object
+  fix:
+    type: [string, 'null']
+  regression:
+    type: array
+    items:
+      type: object
+  forbidden_regressions:
+    type: array
+    items:
+      type: string
+additionalProperties: true

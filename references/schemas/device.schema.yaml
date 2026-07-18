@@ -1,18 +1,40 @@
-required:
-  - device_id
-  - manufacturer
-  - model
-  - interfaces
-  - timing
-  - frame
-  - status
-status_values: [candidate, measured, verified, deprecated]
-recommended:
-  - serial_number
-  - firmware_version
-  - driver_package
-  - driver_commit
-  - intrinsics
-  - units
-  - known_issues
-  - verification
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: device.schema.yaml
+type: object
+required: [schema_version, device_id, manufacturer, model, interfaces, timing, frame, status]
+properties:
+  schema_version:
+    const: 1
+  device_id:
+    type: string
+    pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  manufacturer:
+    type: string
+    minLength: 1
+  model:
+    type: string
+    minLength: 1
+  serial_number:
+    type: [string, 'null']
+  firmware_version:
+    type: [string, 'null']
+  driver_package:
+    type: [string, 'null']
+  driver_commit:
+    type: [string, 'null']
+  interfaces:
+    type: array
+    items:
+      type: string
+  timing:
+    type: object
+  frame:
+    type: string
+    minLength: 1
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  evidence:
+    type: array
+    items:
+      type: object
+additionalProperties: true

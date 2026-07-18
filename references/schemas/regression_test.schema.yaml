@@ -1,0 +1,30 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: regression_test.schema.yaml
+type: object
+required: [schema_version, test_id, status, scope, procedure, expected_result, evidence]
+properties:
+  schema_version:
+    const: 1
+  test_id:
+    type: string
+    pattern: '^TEST-[0-9]{4,}$'
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  scope:
+    type: object
+  incident_ids:
+    type: array
+    items:
+      type: string
+      pattern: '^INC-[0-9]{4,}$'
+  procedure:
+    type: array
+    items:
+      type: string
+  expected_result:
+    type: object
+  evidence:
+    type: array
+    items:
+      type: object
+additionalProperties: true

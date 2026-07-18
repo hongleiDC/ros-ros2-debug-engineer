@@ -1,15 +1,38 @@
-required:
-  - bag_id
-  - format
-  - recording
-  - topics
-  - status
-status_values: [candidate, measured, verified, deprecated]
-recommended:
-  - path
-  - sha256
-  - software
-  - hardware
-  - timing_analysis
-  - anomalies
-  - regression_results
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: bag.schema.yaml
+type: object
+required: [schema_version, bag_id, format, recording, topics, status]
+properties:
+  schema_version:
+    const: 1
+  bag_id:
+    type: string
+    pattern: '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
+  format:
+    type: string
+    minLength: 1
+  recording:
+    type: object
+  topics:
+    type: array
+    items:
+      type: object
+      required: [name, message_type]
+      properties:
+        name: {type: string}
+        message_type: {type: string}
+      additionalProperties: true
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  path:
+    type: [string, 'null']
+  sha256:
+    type: [string, 'null']
+    pattern: '^(|[0-9a-fA-F]{64})$'
+  timing_analysis:
+    type: object
+  anomalies:
+    type: array
+  regression_results:
+    type: array
+additionalProperties: true

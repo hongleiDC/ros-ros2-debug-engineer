@@ -1,0 +1,25 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: decision.schema.yaml
+type: object
+required: [schema_version, decision_id, status, context, decision, consequences, evidence]
+properties:
+  schema_version:
+    const: 1
+  decision_id:
+    type: string
+    pattern: '^DEC-[0-9]{4,}$'
+  status:
+    enum: [candidate, measured, verified, deprecated]
+  context:
+    type: string
+  decision:
+    type: string
+  consequences:
+    type: array
+    items:
+      type: string
+  evidence:
+    type: array
+    items:
+      type: object
+additionalProperties: true
