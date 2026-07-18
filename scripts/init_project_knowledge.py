@@ -13,7 +13,7 @@ import yaml
 
 from schema_utils import validate_knowledge
 
-DIRS = ["devices", "calibrations", "bags", "incidents", "decisions", "regression_tests"]
+DIRS = ["devices", "calibrations", "bags", "incidents", "decisions", "goals", "experiments", "regression_tests"]
 
 
 def dump(data: dict) -> str:

@@ -8,16 +8,17 @@
 
 ## 实验前
 
-1. 读取 `project_knowledge/experiments/` 中全部历史记录。
-2. 明确实验目标、可证伪假设、基线和唯一主要变量。
-3. 记录主线：主线分支和不可变 commit。仅写 `main`、`master` 或“最新代码”不合格。
-4. 记录实验代码：实验分支、commit、工作区是否 dirty；dirty 时保存差异指纹。
-5. 记录环境：ROS 版本与发行版、RMW、ROS_DOMAIN_ID、操作系统、架构、容器镜像与 digest。
-6. 记录依赖：package.xml、CMakeLists、requirements/lock、repos、Dockerfile 等依赖文件的路径与 SHA-256，以及固件版本。
-7. 记录输入：bag、数据集、launch、参数、配置、设备、标定及其 ID 或 SHA-256。
-8. 记录完整命令、步骤、预期现象、指标、阈值和安全限制。
-9. 使用 `scripts/experiment_registry.py create` 生成指纹并检查重复。
-10. 若存在完全相同指纹，默认停止，不重复运行。
+1. 先执行 `goal_guard.py show` 读取活动 `GOAL-*`，确认本实验服务的主目标、`SC-*` 和 `M-*`。没有活动目标时不得创建新实验。
+2. 读取 `project_knowledge/experiments/` 中全部历史记录。
+3. 明确实验目标、可证伪假设、基线和唯一主要变量。
+4. 记录主线：主线分支和不可变 commit。仅写 `main`、`master` 或“最新代码”不合格。
+5. 记录实验代码：实验分支、commit、工作区是否 dirty；dirty 时保存差异指纹。
+6. 记录环境：ROS 版本与发行版、RMW、ROS_DOMAIN_ID、操作系统、架构、容器镜像与 digest。
+7. 记录依赖：package.xml、CMakeLists、requirements/lock、repos、Dockerfile 等依赖文件的路径与 SHA-256，以及固件版本。
+8. 记录输入：bag、数据集、launch、参数、配置、设备、标定及其 ID 或 SHA-256。
+9. 记录完整命令、步骤、预期现象、指标、阈值和安全限制。
+10. 使用 `scripts/experiment_registry.py create` 生成指纹并检查重复。
+11. 若存在完全相同指纹，默认停止，不重复运行。
 
 ## 允许重复的例外
 
@@ -49,7 +50,7 @@
 - 假设 supported、rejected 或 inconclusive；
 - 可复用结论、下一步和不应再重复的条件。
 
-完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP，并通过 parent/compare-to 建立关系。
+完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP，并通过 parent/compare-to 建立关系。实验完成后立即创建 `goal_guard.py checkpoint --trigger experiment`，把结果是否推进成功判据写回目标进度；实验失败不能让 Agent 自动改换主目标。
 
 ## 与回归测试的关系
 
@@ -65,6 +66,9 @@ python3 scripts/experiment_registry.py create \
   --workspace /path/to/repository \
   --objective "Determine whether a 3 ms offset reduces trajectory error" \
   --hypothesis "A positive 3 ms IMU offset lowers ATE" \
+  --criterion SC-1 \
+  --milestone M-2 \
+  --alignment "This experiment directly tests whether timestamp correction satisfies SC-1" \
   --mainline-branch main \
   --input BAG-0004 \
   --input-file data/run04.mcap \

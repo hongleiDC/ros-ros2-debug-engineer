@@ -9,7 +9,7 @@
 1. 使用用户明确指定的目标仓库。
 2. 在仓库根目录查找 `.ros_debug_project.yaml`。
 3. 验证 `knowledge_dir` 是仓库内相对路径，不能包含 `..`，不能通过 symlink 越界。
-4. 读取知识目录中的 project、project_model、configuration、topics、timing、devices、calibrations、bags、incidents、decisions 和 regression tests。
+4. 读取知识目录中的 project、project_model、configuration、topics、timing、devices、calibrations、bags、incidents、decisions、goals、experiments 和 regression tests。
 5. 将知识记录与当前 branch、commit、设备和运行配置比对；不适用的旧记录不得覆盖当前证据。
 
 ## 初始化
