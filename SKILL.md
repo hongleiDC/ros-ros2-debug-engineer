@@ -15,6 +15,8 @@ Skill 本身不会自动了解目标项目。开始诊断前，必须根据 [项
 
 长任务中不得依赖对话记忆保存核心目标。主目标、成功判据、非目标、约束、当前里程碑和下一步必须写入目标契约，并在关键动作前重新读取。局部编译错误、新告警或临时 workaround 不得静默替换用户的最终目标。
 
+任何涉及公式、坐标变换、滤波、标定、时间同步、优化、误差传播、控制或统计指标的步骤，都必须保留“已知条件 → 公式 → 变量映射 → 逐步推导 → 单位/方向检查 → 结论”的链路。关键代码变量必须对应明确数学符号、物理含义、单位、frame 和时间基准，禁止随意命名。
+
 ## 权限模式
 
 根据用户明确请求选择模式，不得自动升级权限：
@@ -29,25 +31,15 @@ Skill 本身不会自动了解目标项目。开始诊断前，必须根据 [项
 
 ## 第零步：建立并持续读取核心目标
 
-当任务涉及代码修改、多轮诊断、实验、多个 package，或预计需要多组工具调用时，先读取 [核心目标契约与防漂移](references/goal_management.md)，并创建 `GOAL-*`：
+当任务涉及代码修改、多轮诊断、实验、多个 package，或预计需要多组工具调用时，先读取 [核心目标契约与防漂移](references/goal_management.md)，并创建符合 `references/schemas/goal.schema.yaml` 的 `GOAL-*` 记录。
 
-```bash
-python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "task title" \
-  --workspace /path/to/repository \
-  --request "user request" \
-  --desired-outcome "observable final outcome" \
-  --primary-goal "single core engineering goal" \
-  --success "criterion::required evidence" \
-  --milestone "first milestone"
-```
-
-- `diagnose` 模式将 goal-state 放在 Agent 临时工作区，不得为了目标记录修改用户仓库。
-- 用户授权持久化后，可将 `project_knowledge` 作为 goal-state。
-- 每次代码修改、参数修改、实验、bag 回放、扩大范围或切换假设前，先执行 `goal_guard.py guard`，明确关联的 `SC-*`、`M-*`、对齐理由和预期证据。
-- 每完成 2 至 3 组工具调用、每次修改前后、实验前后、假设失败、用户纠正、上下文压缩或任务恢复时，执行 `goal_guard.py checkpoint`。
+- `diagnose` 模式将目标记录放在 Agent 临时工作区，不得为了目标记录修改用户仓库。
+- 用户授权持久化后，才可写入 `project_knowledge/goals/`。
+- 每次代码修改、参数修改、实验、bag 回放、扩大范围或切换假设前，必须重新读取目标，明确关联的 `SC-*`、`M-*`、对齐理由和预期证据。
+- 每完成 2 至 3 组工具调用、每次修改前后、实验前后、假设失败、用户纠正、上下文压缩或任务恢复时，追加 checkpoint。
 - 每次进度更新都重述：主目标、当前成功判据、已完成证据、当前里程碑和唯一下一步。
 - 发现旁支问题时放入 blocker/backlog 或新建 goal，不得让它接管当前任务。
-- 目标发生变化必须获得用户明确授权，并使用 `goal_guard.py revise --user-authorized` 保留旧目标哈希与修订理由。
+- 目标发生变化必须获得用户明确授权，并保留旧目标哈希、修订理由和授权证据。
 - 无法说明一个动作服务于哪个成功判据时，停止该动作。
 
 ## 第一步：建立项目事实模型
@@ -79,6 +71,7 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 ## 第二步：按问题选择规则
 
 - 长任务目标、成功判据和防漂移：读取 [核心目标契约](references/goal_management.md)。
+- 数学模型、关键变量、单位和逐步推导：读取 [公式、变量与推导可追溯规则](references/formula_variable_traceability.md)。
 - 通用分层定位：读取 [调试工作流](references/debugging_workflow.md)。
 - ROS 2 DDS、网络、QoS、lifecycle、component、executor：读取 [ROS2 运行时](references/ros2_runtime.md)。
 - 时间戳、时钟域和同步：读取 [时间与同步](references/time_sync.md)。
@@ -94,9 +87,9 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 
 ### 诊断
 
-1. 先执行 `goal_guard.py show`，确认没有把局部症状当成最终目标。
+1. 先重新读取活动 `GOAL-*`，确认没有把局部症状当成最终目标。
 2. 固化复现条件和当前 commit。
-3. 建立“事实、假设、反证、缺失证据”表，并将每个假设关联到一个 `SC-*`。
+3. 建立“事实、假设、反证、缺失证据”表，并将每个假设关联到一个 `SC-*`。涉及计算时同步建立公式编号、逐步推导和变量映射表。
 4. 从最低成本、最高区分度的实验开始；实验必须关联活动 goal、成功判据和里程碑。
 5. 不通过扩大阈值、关闭校验、增加无界队列或重复发布 TF 掩盖根因。
 6. 结论必须绑定命令输出、代码位置、日志、bag 统计或可重复测试。
@@ -104,11 +97,11 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 
 ### 编写或修改代码
 
-1. 修改前运行 `goal_guard.py guard`；记录该补丁服务的成功判据、当前里程碑、对齐理由和预期证据。
+1. 修改前重新读取活动目标；记录该补丁服务的成功判据、当前里程碑、对齐理由和预期证据。
 2. 先适配现有 package、CMake、Python packaging、目录结构、C++ 标准和代码风格。
 3. 局部问题使用最小补丁；只有新增独立节点或包时才默认交付完整包级实现。
-4. 明确输入、输出、消息类型、QoS、参数、frame、时间源、单位、线程模型和失败行为。
-5. 修改后立即 checkpoint，记录改了什么、证据是什么、是否仍对齐主目标和唯一下一步。
+4. 明确输入、输出、消息类型、QoS、参数、frame、时间源、单位、线程模型和失败行为。关键变量必须与公式符号一一对应；变量名必须表达物理意义和单位，不得使用无语义占位命名。
+5. 对实现中的每个关键公式记录：公式编号、符号定义、代码变量映射、单位、frame/方向、推导步骤和手算样例；修改后立即 checkpoint，记录改了什么、证据是什么、是否仍对齐主目标和唯一下一步。
 6. 运行任务相关的静态检查、构建、单元测试、launch 测试、短 bag 回放或仿真验证。测试通过只能证明对应判据，不能自动宣告整个目标完成。
 7. 不具备 ROS 环境、依赖、bag 或硬件时，明确报告哪些成功判据尚未验证。
 
@@ -127,15 +120,15 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 1. **核心目标状态**：`GOAL-*`、主目标、当前 `SC-*`、当前 `M-*`、漂移状态和唯一下一步。
 2. **当前项目理解等级**：证据覆盖、已确认事实和盲区。
 3. **诊断或实现结论**：区分已验证结论与候选假设。
-4. **证据**：代码、命令、日志、bag、运行图或测试结果。
-5. **代码变更**：文件与关键行为；未修改时明确说明。
-6. **验证**：已运行、未运行和失败的检查。
-7. **风险与回滚**：特别标出真实硬件、控制命令和兼容性风险。
-8. **知识库或发布结果**：仅报告实际完成的写入、commit、push 或 PR。
+4. **推导与变量映射**：关键公式、逐步推导、数学符号到代码变量/参数/消息字段的映射、单位与 frame 检查。
+5. **证据**：代码、命令、日志、bag、运行图或测试结果。
+6. **代码变更**：文件与关键行为；未修改时明确说明。
+7. **验证**：已运行、未运行和失败的检查。
+8. **风险与回滚**：特别标出真实硬件、控制命令和兼容性风险。
+9. **知识库或发布结果**：仅报告实际完成的写入、commit、push 或 PR。
 
 ## 工具
 
-- `scripts/goal_guard.py`：建立目标契约、关键动作守卫、检查点、显式修订和完成判定。
 - `scripts/inspect_workspace.py`：只读扫描 ROS 工作空间并生成静态项目事实模型。
 - `scripts/collect_runtime_snapshot.py`：运行只读 ROS 命令，收集运行图和环境快照。
 - `scripts/init_project_knowledge.py`：显式初始化项目知识库。
