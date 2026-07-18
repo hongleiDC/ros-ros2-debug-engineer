@@ -1,0 +1,270 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: experiment.schema.yaml
+type: object
+required:
+  - schema_version
+  - experiment_id
+  - title
+  - status
+  - created_at
+  - updated_at
+  - objective
+  - hypothesis
+  - scope
+  - environment
+  - dependencies
+  - inputs
+  - changes
+  - procedure
+  - fingerprint
+  - duplicate_check
+  - results
+  - conclusion
+properties:
+  schema_version:
+    const: 1
+  experiment_id:
+    type: string
+    pattern: '^EXP-[0-9]{4,}$'
+  title:
+    type: string
+    minLength: 1
+  status:
+    enum: [planned, running, completed, aborted, inconclusive, deprecated]
+  created_at:
+    type: string
+    format: date-time
+  updated_at:
+    type: string
+    format: date-time
+  objective:
+    type: string
+    minLength: 1
+  hypothesis:
+    type: string
+    minLength: 1
+  scope:
+    type: object
+    required: [repository, mainline, experiment]
+    properties:
+      repository:
+        type: object
+        required: [path]
+        properties:
+          path: {type: string}
+          remote: {type: [string, 'null']}
+        additionalProperties: true
+      mainline:
+        type: object
+        required: [branch, commit]
+        properties:
+          branch: {type: string, minLength: 1}
+          commit: {type: string, minLength: 1}
+        additionalProperties: true
+      experiment:
+        type: object
+        required: [branch, commit, dirty, dirty_fingerprint]
+        properties:
+          branch: {type: string, minLength: 1}
+          commit: {type: string, minLength: 1}
+          dirty: {type: boolean}
+          dirty_fingerprint:
+            type: [string, 'null']
+            pattern: '^[0-9a-f]{64}$'
+        additionalProperties: true
+      parent_experiment_ids:
+        type: array
+        items: {type: string, pattern: '^EXP-[0-9]{4,}$'}
+        uniqueItems: true
+      compare_to_experiment_ids:
+        type: array
+        items: {type: string, pattern: '^EXP-[0-9]{4,}$'}
+        uniqueItems: true
+    additionalProperties: true
+  environment:
+    type: object
+    required: [ros_version, ros_distro, rmw_implementation, operating_system, architecture]
+    properties:
+      ros_version: {type: [string, 'null']}
+      ros_distro: {type: [string, 'null']}
+      rmw_implementation: {type: [string, 'null']}
+      ros_domain_id: {type: [string, 'null']}
+      operating_system: {type: string}
+      architecture: {type: string}
+      container_image: {type: [string, 'null']}
+      container_digest: {type: [string, 'null']}
+      middleware_config: {type: object}
+      environment_variables: {type: object}
+    additionalProperties: true
+  dependencies:
+    type: object
+    required: [manifests, declared]
+    properties:
+      manifests:
+        type: array
+        items:
+          type: object
+          required: [path, sha256]
+          properties:
+            path: {type: string}
+            sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+          additionalProperties: false
+      declared:
+        type: array
+        items: {type: string}
+      firmware:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+  inputs:
+    type: object
+    required: [references, files, devices, calibrations]
+    properties:
+      references:
+        type: array
+        items: {type: string}
+      files:
+        type: array
+        items:
+          type: object
+          required: [kind, path, sha256]
+          properties:
+            kind: {enum: [data, bag, launch, parameters, configuration, other]}
+            path: {type: string}
+            sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+          additionalProperties: true
+      devices:
+        type: array
+        items: {type: string}
+      calibrations:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+  changes:
+    type: array
+    items:
+      type: object
+      required: [description]
+      properties:
+        target: {type: [string, 'null']}
+        before: {}
+        after: {}
+        description: {type: string, minLength: 1}
+        reason: {type: [string, 'null']}
+      additionalProperties: true
+  procedure:
+    type: object
+    required: [commands, steps, expected, safety_constraints]
+    properties:
+      commands:
+        type: array
+        minItems: 1
+        items: {type: string, minLength: 1}
+      steps:
+        type: array
+        items: {type: string}
+      expected:
+        type: array
+        minItems: 1
+        items: {type: string}
+      safety_constraints:
+        type: array
+        items: {type: string}
+      metrics:
+        type: array
+        items:
+          type: object
+          required: [name]
+          properties:
+            name: {type: string}
+            direction: {enum: [lower, higher, target, none]}
+            unit: {type: [string, 'null']}
+            threshold: {}
+          additionalProperties: true
+    additionalProperties: true
+  fingerprint:
+    type: object
+    required: [algorithm, value, fields]
+    properties:
+      algorithm: {const: sha256-v1}
+      value: {type: string, pattern: '^[0-9a-f]{64}$'}
+      fields:
+        type: array
+        items: {type: string}
+    additionalProperties: false
+  duplicate_check:
+    type: object
+    required: [checked_at, exact_match_ids, similar_match_ids, override_reason]
+    properties:
+      checked_at: {type: string, format: date-time}
+      exact_match_ids:
+        type: array
+        items: {type: string, pattern: '^EXP-[0-9]{4,}$'}
+        uniqueItems: true
+      similar_match_ids:
+        type: array
+        items: {type: string, pattern: '^EXP-[0-9]{4,}$'}
+        uniqueItems: true
+      override_reason: {type: [string, 'null']}
+    additionalProperties: false
+  results:
+    type: object
+    required: [outcome, run_started_at, run_finished_at, summary, metrics, observations, artifacts, logs, failures]
+    properties:
+      outcome: {enum: [not_run, pass, fail, mixed, error]}
+      run_started_at: {type: [string, 'null'], format: date-time}
+      run_finished_at: {type: [string, 'null'], format: date-time}
+      summary: {type: [string, 'null']}
+      metrics:
+        type: array
+        items:
+          type: object
+          required: [name, value]
+          properties:
+            name: {type: string}
+            value: {}
+            unit: {type: [string, 'null']}
+            comparison: {type: [string, 'null']}
+          additionalProperties: true
+      observations:
+        type: array
+        items: {type: string}
+      artifacts:
+        type: array
+        items:
+          type: object
+          required: [path, sha256, description]
+          properties:
+            path: {type: string}
+            sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            description: {type: string}
+          additionalProperties: false
+      logs:
+        type: array
+        items:
+          type: object
+          required: [path, sha256, description]
+          properties:
+            path: {type: string}
+            sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
+            description: {type: string}
+          additionalProperties: false
+      failures:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+  conclusion:
+    type: object
+    required: [verdict, confidence, summary, lessons, next_actions]
+    properties:
+      verdict: {enum: [pending, supported, rejected, inconclusive, superseded]}
+      confidence: {enum: [low, medium, high]}
+      summary: {type: [string, 'null']}
+      lessons:
+        type: array
+        items: {type: string}
+      next_actions:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+additionalProperties: true
