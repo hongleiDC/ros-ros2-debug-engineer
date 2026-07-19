@@ -32,6 +32,11 @@ python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "Fix timestamp
 
 每次代码修改、参数调整或实验前，必须调用 `goal_guard.py guard`，明确动作关联的 `SC-*` 和 `M-*`。每完成 2 至 3 组工具调用、发生失败、用户纠正或任务恢复时，必须 checkpoint 并重新显示主目标。目标只能在用户明确授权后修订，旧目标哈希会保留。
 
+
+## 公式与变量不允许失联
+
+涉及时间同步、坐标变换、滤波、标定、误差传播、优化和指标计算时，必须保存完整推导链，并维护数学符号到代码变量、配置参数和消息字段的映射。关键变量名必须表达物理意义、单位和 frame，例如 `time_offset_s`、`angular_velocity_rad_s`、`T_map_base`，不能随意使用 `tmp`、`val` 或含义不明的 `x1`。
+
 ## 主要能力
 
 - ROS 1 遗留项目和 ROS 2 项目的 C++ / Python 开发与调试；
@@ -46,6 +51,26 @@ python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "Fix timestamp
 - 核心目标契约、检查点和防漂移守卫；
 - 实验台账、实验指纹和重复实验阻止；
 - 可选的项目知识库和审计更新。
+
+
+## 推理与公式代码知识库
+
+采用项目知识库后，公式相关代码会维护四类可审计记录：
+
+- `FORM-*`：公式版本、符号、假设、坐标/时间约定和逐步推导；
+- `MAP-*`：数学符号到代码变量、配置参数、消息字段和状态索引的严格映射；
+- `REAS-*`：从已知条件到结论的逐步推理链；
+- `AUD-*`：代码 identifier、单位、frame、方向、公式版本和推理完整性审计。
+
+```bash
+python3 scripts/logic_audit.py project_knowledge \
+  --workspace . \
+  --audit-id AUD-0001 \
+  --write-report \
+  --strict-warnings
+```
+
+审计可以发现映射断裂、变量语义冲突、明显的单位后缀错误、缺失单位转换、过期代码位置、推理跳步和“未验证前提却宣称结论 verified”等问题。审计通过不等于数学模型已被真实数据证明，仍需手算、单元测试、bag、仿真或硬件回归。
 
 ## 安全模式
 
@@ -134,6 +159,10 @@ python3 scripts/init_project_knowledge.py \
     ├── decisions/
     ├── goals/
     ├── experiments/
+    ├── formulas/
+    ├── variable_mappings/
+    ├── reasoning_chains/
+    ├── audits/
     └── regression_tests/
 ```
 

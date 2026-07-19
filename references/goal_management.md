@@ -35,28 +35,42 @@
 
 ### 1. 开始任务
 
-创建 `GOAL-xxxx.yaml` 或等价结构化记录，并至少填写：原始请求、期望结果、单一主目标、`SC-*`、非目标、约束、不变量、`M-*`、当前证据、阻塞项和唯一下一步。记录必须符合 `references/schemas/goal.schema.yaml`。
+```bash
+python3 scripts/goal_guard.py start /path/to/state GOAL-0001 "Fix IMU timestamp root cause" \
+  --workspace /path/to/repository \
+  --request "定位并修复 IMU 时间异常" \
+  --desired-outcome "长时间运行无时间回退且定位精度不下降" \
+  --primary-goal "确认并消除 IMU 时间戳回退的根因，同时保持定位精度" \
+  --success "连续 30 分钟无 timestamp rollback::运行日志和计数器" \
+  --success "ATE 不高于基线 0.35 m::同一 bag 的轨迹评估报告" \
+  --non-goal "不通过关闭时间检查掩盖问题" \
+  --constraint "保持现有消息接口兼容" \
+  --invariant "TF 方向和单位不得改变" \
+  --milestone "建立可复现基线" \
+  --milestone "区分传感器、驱动和融合层根因" \
+  --milestone "最小修复并完成回归"
+```
 
-诊断只读模式下，目标记录放在 Agent 临时工作区，不得为了记录目标修改用户仓库。用户授权持久化后，才可写入 `project_knowledge/goals/`。
+诊断只读模式下，`state` 应位于 Agent 临时工作区，不得为了目标记录修改用户仓库。用户授权持久化后，可使用 `project_knowledge` 作为 state。
 
 ### 2. 每次关键动作前重新锚定
 
-在修改代码、改参数、运行实验、回放 bag、切换假设或扩大范围前，必须重新读取活动目标并输出：
+在修改代码、改参数、运行实验、回放 bag、切换假设或扩大范围前调用：
 
-```text
-GOAL-*：当前主目标
-SC-*：本动作服务的成功判据
-M-*：当前里程碑
-动作：准备做什么
-对齐理由：为什么该动作直接推进判据
-预期证据：完成后会得到什么可验证证据
+```bash
+python3 scripts/goal_guard.py guard /path/to/state \
+  --criterion SC-1 \
+  --milestone M-2 \
+  --action "检查驱动时间戳转换函数" \
+  --alignment "该函数直接决定是否产生时间回退" \
+  --expected-evidence "代码路径和单元测试能够区分转换错误"
 ```
 
-没有活动目标、判据或里程碑不存在、目标处于 `drifted`，或无法说明对齐理由时，停止该动作。
+没有活动目标、成功判据不存在、里程碑不存在或目标已处于 `drifted` 时，守卫必须拒绝继续。
 
 ### 3. 高频检查点
 
-以下时机必须向目标记录追加 checkpoint：
+以下时机必须 checkpoint：
 
 - 每完成 2 至 3 组工具调用；
 - 每次代码修改前后；
@@ -66,7 +80,19 @@ M-*：当前里程碑
 - 即将压缩上下文、交接或恢复任务；
 - 发现新的旁支问题。
 
-每个 checkpoint 至少记录：触发原因、关联 `SC-*` 和 `M-*`、摘要、证据、决策、漂移状态和唯一下一步。检查点输出必须再次显示主目标、当前成功判据、当前里程碑和下一步。旁支问题放入 blocker、backlog 或新的 goal，不得自动接管当前任务。
+```bash
+python3 scripts/goal_guard.py checkpoint /path/to/state \
+  --trigger code_change \
+  --criterion SC-1 \
+  --milestone M-2 \
+  --summary "已确认驱动使用设备时钟，但转换中丢失秒回绕" \
+  --evidence "src/driver_time.cpp:118-146" \
+  --decision "修复回绕处理，不改变融合层阈值" \
+  --next-action "增加回绕单元测试并实现最小补丁" \
+  --drift-status aligned
+```
+
+检查点输出必须再次显示主目标、当前成功判据、当前里程碑和下一步。旁支问题放入 blocker、backlog 或新的 goal，不得自动接管当前任务。
 
 ## 目标漂移规则
 
@@ -75,7 +101,7 @@ M-*：当前里程碑
 - 临时 workaround 必须标记为 workaround，不能宣称完成根因修复。
 - 若动作无法说明服务于哪个 `SC-*`，默认停止。
 - 若发现原目标不可行，标记 `at_risk` 或 `drifted`，向用户说明，不得自行改写目标。
-- 只有用户明确授权才能修改目标契约；修订必须保留旧目标哈希、修改原因、时间和授权证据。
+- 只有用户明确授权才能使用 `goal_guard.py revise --user-authorized` 修改目标契约；修订必须保留旧哈希、原因和授权证据。
 
 ## 完成条件
 

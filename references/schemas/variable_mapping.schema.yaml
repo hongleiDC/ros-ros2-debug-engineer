@@ -1,0 +1,123 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: variable_mapping.schema.yaml
+type: object
+required:
+  - schema_version
+  - mapping_id
+  - status
+  - formula_id
+  - formula_version
+  - goal_alignment
+  - implementation
+  - entries
+  - invariants
+  - verification
+properties:
+  schema_version: {const: 1}
+  mapping_id: {type: string, pattern: '^MAP-[0-9]{4,}$'}
+  status: {enum: [draft, candidate, measured, verified, deprecated]}
+  formula_id: {type: string, pattern: '^FORM-[0-9]{4,}$'}
+  formula_version: {type: string, minLength: 1}
+  goal_alignment:
+    type: object
+    required: [goal_id, criterion_ids]
+    properties:
+      goal_id: {type: [string, 'null'], pattern: '^GOAL-[0-9]{4,}$'}
+      criterion_ids:
+        type: array
+        items: {type: string, pattern: '^SC-[0-9]+$'}
+        uniqueItems: true
+    additionalProperties: false
+  implementation:
+    type: object
+    required: [repository, commit, package, file, symbol_scope, language]
+    properties:
+      repository: {type: string, minLength: 1}
+      commit: {type: string, minLength: 1}
+      package: {type: string, minLength: 1}
+      file: {type: string, minLength: 1}
+      symbol_scope: {type: string, minLength: 1}
+      language: {enum: [cpp, python, launch, yaml, other]}
+    additionalProperties: true
+  entries:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - entry_id
+        - symbol_id
+        - code_identifier
+        - identifier_kind
+        - source
+        - physical_meaning
+        - formula_unit
+        - code_unit
+        - conversion
+        - frame
+        - direction
+        - time_basis
+        - shape
+        - index_order
+        - data_type
+        - aliases
+        - evidence
+        - status
+      properties:
+        entry_id: {type: string, pattern: '^VM-[0-9]+$'}
+        symbol_id: {type: string, pattern: '^SYM-[0-9]+$'}
+        code_identifier: {type: string, minLength: 1}
+        identifier_kind:
+          enum: [local, member, parameter, config, message_field, log_field, state_index, function_argument, return_value, constant]
+        source:
+          type: object
+          required: [file, line_start, line_end]
+          properties:
+            file: {type: string, minLength: 1}
+            line_start: {type: integer, minimum: 1}
+            line_end: {type: integer, minimum: 1}
+          additionalProperties: false
+        physical_meaning: {type: string, minLength: 1}
+        formula_unit: {type: string, minLength: 1}
+        code_unit: {type: string, minLength: 1}
+        conversion:
+          type: object
+          required: [required, expression, direction, test_refs]
+          properties:
+            required: {type: boolean}
+            expression: {type: string}
+            direction: {type: string}
+            test_refs:
+              type: array
+              items: {type: string}
+          additionalProperties: false
+        frame: {type: string, minLength: 1}
+        direction: {type: string, minLength: 1}
+        time_basis: {type: string, minLength: 1}
+        shape: {type: string, minLength: 1}
+        index_order: {type: string, minLength: 1}
+        data_type: {type: string, minLength: 1}
+        aliases:
+          type: array
+          items: {type: string}
+        evidence:
+          type: array
+          items: {type: string}
+        status: {enum: [unknown, candidate, measured, verified, deprecated]}
+      additionalProperties: false
+  invariants:
+    type: array
+    items: {type: string}
+  verification:
+    type: object
+    required: [test_refs, hand_calculation_refs, last_audited_commit]
+    properties:
+      test_refs:
+        type: array
+        items: {type: string}
+      hand_calculation_refs:
+        type: array
+        items: {type: string}
+      last_audited_commit: {type: [string, 'null']}
+    additionalProperties: true
+additionalProperties: false

@@ -1,0 +1,155 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: reasoning_chain.schema.yaml
+type: object
+required:
+  - schema_version
+  - reasoning_id
+  - title
+  - status
+  - created_at
+  - updated_at
+  - goal_alignment
+  - scope
+  - question
+  - claim
+  - known_conditions
+  - assumptions
+  - formula_refs
+  - mapping_ids
+  - steps
+  - conclusion
+  - unresolved
+properties:
+  schema_version: {const: 1}
+  reasoning_id: {type: string, pattern: '^REAS-[0-9]{4,}$'}
+  title: {type: string, minLength: 1}
+  status: {enum: [draft, candidate, verified, rejected, deprecated]}
+  created_at: {type: string, format: date-time}
+  updated_at: {type: string, format: date-time}
+  goal_alignment:
+    type: object
+    required: [goal_id, criterion_ids, milestone_id]
+    properties:
+      goal_id: {type: string, pattern: '^GOAL-[0-9]{4,}$'}
+      criterion_ids:
+        type: array
+        minItems: 1
+        items: {type: string, pattern: '^SC-[0-9]+$'}
+        uniqueItems: true
+      milestone_id: {type: string, pattern: '^M-[0-9]+$'}
+    additionalProperties: false
+  scope:
+    type: object
+    required: [repository, commit, packages, files]
+    properties:
+      repository: {type: string, minLength: 1}
+      commit: {type: string, minLength: 1}
+      packages:
+        type: array
+        items: {type: string}
+      files:
+        type: array
+        items: {type: string}
+    additionalProperties: true
+  question: {type: string, minLength: 1}
+  claim: {type: string, minLength: 1}
+  known_conditions:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required: [condition_id, statement, source, status]
+      properties:
+        condition_id: {type: string, pattern: '^COND-[0-9]+$'}
+        statement: {type: string, minLength: 1}
+        source: {type: string, minLength: 1}
+        status: {enum: [unknown, candidate, measured, verified, rejected]}
+      additionalProperties: false
+  assumptions:
+    type: array
+    items:
+      type: object
+      required: [assumption_id, statement, justification, status]
+      properties:
+        assumption_id: {type: string, pattern: '^ASM-[0-9]+$'}
+        statement: {type: string, minLength: 1}
+        justification: {type: string, minLength: 1}
+        status: {enum: [unknown, candidate, verified, rejected]}
+      additionalProperties: false
+  formula_refs:
+    type: array
+    items:
+      type: object
+      required: [formula_id, version]
+      properties:
+        formula_id: {type: string, pattern: '^FORM-[0-9]{4,}$'}
+        version: {type: string, minLength: 1}
+      additionalProperties: false
+  mapping_ids:
+    type: array
+    items: {type: string, pattern: '^MAP-[0-9]{4,}$'}
+    uniqueItems: true
+  steps:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - step_id
+        - premise_refs
+        - rule_type
+        - rule_or_definition
+        - operation
+        - expression_before
+        - expression_after
+        - symbol_ids
+        - code_identifiers
+        - evidence_refs
+        - output
+        - verification_status
+        - counterexample_check
+      properties:
+        step_id: {type: string, pattern: '^STEP-[0-9]+$'}
+        premise_refs:
+          type: array
+          minItems: 1
+          items: {type: string, minLength: 1}
+        rule_type:
+          enum: [definition, algebra, geometry, calculus, statistics, physical_law, software_semantics, inference, experimental_observation]
+        rule_or_definition: {type: string, minLength: 1}
+        operation: {type: string, minLength: 1}
+        expression_before: {type: [string, 'null']}
+        expression_after: {type: [string, 'null']}
+        symbol_ids:
+          type: array
+          items: {type: string, pattern: '^SYM-[0-9]+$'}
+        code_identifiers:
+          type: array
+          items: {type: string}
+        evidence_refs:
+          type: array
+          items: {type: string}
+        output: {type: string, minLength: 1}
+        verification_status: {enum: [unknown, candidate, measured, verified, rejected]}
+        counterexample_check: {type: string, minLength: 1}
+      additionalProperties: false
+  conclusion:
+    type: object
+    required: [statement, status, supported_criterion_ids, evidence_refs, limitations]
+    properties:
+      statement: {type: string, minLength: 1}
+      status: {enum: [unknown, candidate, measured, verified, rejected]}
+      supported_criterion_ids:
+        type: array
+        items: {type: string, pattern: '^SC-[0-9]+$'}
+      evidence_refs:
+        type: array
+        items: {type: string}
+      limitations:
+        type: array
+        items: {type: string}
+    additionalProperties: false
+  unresolved:
+    type: array
+    items: {type: string}
+additionalProperties: false

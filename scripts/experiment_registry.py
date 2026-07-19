@@ -16,6 +16,8 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 import yaml
 
+from goal_utils import active_goal, contract_hash, find_goal
+
 ID_RE = re.compile(r"^EXP-[0-9]{4,}$")
 DEP_NAMES = {"package.xml", "CMakeLists.txt", "setup.py", "setup.cfg", "pyproject.toml", "poetry.lock", "uv.lock", "Pipfile", "Pipfile.lock"}
 DEP_SUFFIXES = (".repos", ".rosinstall")
@@ -53,17 +55,36 @@ def dependency_snapshot(workspace: Path) -> list[dict[str, str]]:
     return result
 
 
-def dirty_hash(workspace: Path) -> tuple[bool, str | None]:
-    status = git(workspace, "status", "--porcelain=v1", "--untracked-files=all") or ""
-    if not status:
+def dirty_hash(workspace: Path, excluded_roots: list[Path] | None = None) -> tuple[bool, str | None]:
+    excluded: list[Path] = []
+    for root in excluded_roots or []:
+        resolved = root.resolve()
+        if resolved == workspace or workspace in resolved.parents:
+            excluded.append(resolved)
+
+    def ignored(relative_text: str) -> bool:
+        relative_text = relative_text.strip().strip('"')
+        if " -> " in relative_text:
+            relative_text = relative_text.split(" -> ", 1)[1]
+        candidate = (workspace / relative_text).resolve()
+        return any(candidate == root or root in candidate.parents for root in excluded)
+
+    raw_status = git(workspace, "status", "--porcelain=v1", "--untracked-files=all") or ""
+    status_lines = [line for line in raw_status.splitlines() if len(line) >= 4 and not ignored(line[3:])]
+    if not status_lines:
         return False, None
-    diff = git(workspace, "diff", "--binary", "HEAD") or ""
-    payload = status.encode() + b"\0" + diff.encode()
-    for line in status.splitlines():
+    diff_args = ["diff", "--binary", "HEAD", "--", "."]
+    for root in excluded:
+        relative = root.relative_to(workspace).as_posix()
+        diff_args.extend([f":(exclude){relative}", f":(exclude){relative}/**"])
+    diff = git(workspace, *diff_args) or ""
+    payload = "\n".join(status_lines).encode() + b"\0" + diff.encode()
+    for line in status_lines:
         if line.startswith("?? "):
-            path = (workspace / line[3:]).resolve()
+            relative_text = line[3:].strip().strip('"')
+            path = (workspace / relative_text).resolve()
             if path.is_file() and workspace in path.parents:
-                payload += b"\0" + line[3:].encode() + b"\0" + path.read_bytes()
+                payload += b"\0" + relative_text.encode() + b"\0" + path.read_bytes()
     return True, sha(payload)
 
 
@@ -100,6 +121,52 @@ def fingerprint(record: dict[str, Any]) -> str:
     return sha(json.dumps(selected, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
 
 
+def resolve_goal_alignment(args: argparse.Namespace, knowledge: Path) -> dict[str, Any]:
+    state = (args.goal_state or knowledge).resolve()
+    try:
+        _, goal = find_goal(state, args.goal_id) if args.goal_id else active_goal(state)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if goal.get("status") != "active":
+        raise SystemExit(f"goal {goal.get('goal_id')} is not active")
+    criteria = {
+        item.get("criterion_id"): item
+        for item in goal.get("contract", {}).get("success_criteria", [])
+        if isinstance(item, dict) and isinstance(item.get("criterion_id"), str)
+    }
+    selected = list(dict.fromkeys(args.criterion))
+    if not selected:
+        pending = [key for key, value in criteria.items() if value.get("status") == "pending"]
+        if len(pending) == 1:
+            selected = pending
+        else:
+            raise SystemExit("--criterion is required when the active goal has zero or multiple pending criteria")
+    missing = [item for item in selected if item not in criteria]
+    if missing:
+        raise SystemExit(f"unknown goal criteria: {', '.join(missing)}")
+    milestones = {
+        item.get("milestone_id"): item
+        for item in goal.get("progress", {}).get("milestones", [])
+        if isinstance(item, dict) and isinstance(item.get("milestone_id"), str)
+    }
+    milestone = args.milestone or goal.get("progress", {}).get("current_milestone_id")
+    if milestone not in milestones:
+        raise SystemExit(f"unknown goal milestone: {milestone}")
+    if not args.alignment or len(args.alignment.strip()) < 12:
+        raise SystemExit("--alignment must explain how the experiment advances the active goal")
+    expected_hash = contract_hash(goal)
+    if goal.get("contract_hash") != expected_hash:
+        raise SystemExit("active goal contract hash is invalid; repair the goal record before experimenting")
+    return {
+        "goal_id": goal["goal_id"],
+        "contract_hash": goal["contract_hash"],
+        "primary_goal_snapshot": goal["contract"]["primary_goal"],
+        "criterion_ids": selected,
+        "milestone_id": milestone,
+        "alignment_reason": args.alignment.strip(),
+    }
+
+
 def records(folder: Path) -> list[dict[str, Any]]:
     found = []
     for path in sorted(folder.glob("*.yaml")):
@@ -122,13 +189,15 @@ def create(args: argparse.Namespace) -> int:
     target = folder / f"{args.experiment_id}.yaml"
     if target.exists():
         raise SystemExit(f"experiment already exists: {args.experiment_id}")
-    dirty, dirty_fp = dirty_hash(workspace)
+    goal_state = (args.goal_state or knowledge).resolve()
+    dirty, dirty_fp = dirty_hash(workspace, [knowledge, goal_state])
     current = git(workspace, "rev-parse", "HEAD") or "unknown"
     mainline = args.mainline_commit or git(workspace, "rev-parse", args.mainline_branch) or "unknown"
     env_names = ["ROS_VERSION", "ROS_DISTRO", "RMW_IMPLEMENTATION", "ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY"]
     files = [input_record(workspace, p, "data") for p in args.input_file]
     files += [input_record(workspace, p, "parameters") for p in args.parameter_file]
     created = now()
+    goal_alignment = resolve_goal_alignment(args, knowledge)
     record: dict[str, Any] = {
         "schema_version": 1,
         "experiment_id": args.experiment_id,
@@ -138,6 +207,7 @@ def create(args: argparse.Namespace) -> int:
         "updated_at": created,
         "objective": args.objective,
         "hypothesis": args.hypothesis,
+        "goal_alignment": goal_alignment,
         "scope": {
             "repository": {"path": str(workspace), "remote": git(workspace, "config", "--get", "remote.origin.url")},
             "mainline": {"branch": args.mainline_branch, "commit": mainline},
@@ -185,10 +255,41 @@ def finish(args: argparse.Namespace) -> int:
     record["results"].update({"outcome": args.outcome, "run_finished_at": now(), "summary": args.summary})
     record["results"]["observations"].extend(args.observation)
     record["results"]["failures"].extend(args.failure)
-    for raw in args.artifact:
+    workspace = Path(record.get("scope", {}).get("repository", {}).get("path", ".")).resolve()
+
+    def result_file(raw: str) -> tuple[Path, str]:
         path_text, _, description = raw.partition(":")
-        path = Path(path_text).resolve()
-        record["results"]["artifacts"].append({"path": str(path), "sha256": file_sha(path), "description": description or path.name})
+        path = Path(path_text)
+        path = (workspace / path).resolve() if not path.is_absolute() else path.resolve()
+        if not path.is_file():
+            raise SystemExit(f"result file not found: {path}")
+        return path, description or path.name
+
+    for raw in args.metric:
+        parts = raw.split(":", 2)
+        name_value = parts[0]
+        unit = parts[1] if len(parts) > 1 and parts[1] else None
+        comparison = parts[2] if len(parts) > 2 and parts[2] else None
+        name, separator, value_text = name_value.partition("=")
+        if not separator or not name.strip() or not value_text.strip():
+            raise SystemExit("result metric must use name=value[:unit[:comparison]]")
+        value: Any
+        try:
+            value = int(value_text)
+        except ValueError:
+            try:
+                value = float(value_text)
+            except ValueError:
+                value = value_text
+        record["results"]["metrics"].append({
+            "name": name.strip(), "value": value, "unit": unit, "comparison": comparison,
+        })
+    for raw in args.artifact:
+        path, description = result_file(raw)
+        record["results"]["artifacts"].append({"path": str(path), "sha256": file_sha(path), "description": description})
+    for raw in args.log:
+        path, description = result_file(raw)
+        record["results"]["logs"].append({"path": str(path), "sha256": file_sha(path), "description": description})
     record["conclusion"].update({"verdict": args.verdict, "confidence": args.confidence, "summary": args.summary, "lessons": args.lesson, "next_actions": args.next_action})
     validate(record)
     target.write_text(yaml.safe_dump(record, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -202,6 +303,9 @@ def parser() -> argparse.ArgumentParser:
     create_p = commands.add_parser("create")
     create_p.add_argument("knowledge", type=Path); create_p.add_argument("experiment_id"); create_p.add_argument("title")
     create_p.add_argument("--workspace", type=Path, required=True); create_p.add_argument("--objective", required=True); create_p.add_argument("--hypothesis", required=True)
+    create_p.add_argument("--goal-state", type=Path); create_p.add_argument("--goal-id")
+    create_p.add_argument("--criterion", action="append", default=[]); create_p.add_argument("--milestone")
+    create_p.add_argument("--alignment", required=True)
     create_p.add_argument("--mainline-branch", default="main"); create_p.add_argument("--mainline-commit")
     for name in ("input", "input-file", "parameter-file", "dependency", "firmware", "device", "calibration", "change", "step", "safety", "metric", "parent", "compare-to"):
         create_p.add_argument(f"--{name}", action="append", default=[])
@@ -214,7 +318,7 @@ def parser() -> argparse.ArgumentParser:
     finish_p.add_argument("--outcome", choices=["pass", "fail", "mixed", "error"], required=True)
     finish_p.add_argument("--summary", required=True); finish_p.add_argument("--verdict", choices=["supported", "rejected", "inconclusive", "superseded"], required=True)
     finish_p.add_argument("--confidence", choices=["low", "medium", "high"], required=True)
-    for name in ("observation", "failure", "artifact", "lesson", "next-action"):
+    for name in ("observation", "failure", "artifact", "log", "metric", "lesson", "next-action"):
         finish_p.add_argument(f"--{name}", action="append", default=[])
     finish_p.set_defaults(func=finish)
     return root

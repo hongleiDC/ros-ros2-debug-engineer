@@ -13,7 +13,7 @@ import yaml
 
 from schema_utils import validate_knowledge
 
-DIRS = ["devices", "calibrations", "bags", "incidents", "decisions", "goals", "experiments", "regression_tests"]
+DIRS = ["devices", "calibrations", "bags", "incidents", "decisions", "goals", "experiments", "formulas", "variable_mappings", "reasoning_chains", "audits", "regression_tests"]
 
 
 def dump(data: dict) -> str:
@@ -47,7 +47,13 @@ def main() -> int:
         staging.mkdir()
         for name in DIRS:
             (staging / name).mkdir()
-        (staging / "README.md").write_text(f"# {args.project_id} project knowledge\n", encoding="utf-8")
+        (staging / "README.md").write_text(
+            f"# {args.project_id} project knowledge\n\n"
+            "This knowledge base stores project facts, goals, experiments, formulas, formula-to-code variable mappings, "
+            "stepwise reasoning chains, and logic audit reports. Verified conclusions must remain traceable to code, "
+            "formula versions, units, frames, time bases, tests, and evidence.\n",
+            encoding="utf-8",
+        )
         (staging / "project.yaml").write_text(dump({
             "schema_version": 1,
             "project_id": args.project_id,

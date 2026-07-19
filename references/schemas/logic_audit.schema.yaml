@@ -1,0 +1,77 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: logic_audit.schema.yaml
+type: object
+required:
+  - schema_version
+  - audit_id
+  - created_at
+  - target
+  - scope
+  - checks
+  - findings
+  - summary
+properties:
+  schema_version: {const: 1}
+  audit_id: {type: string, pattern: '^AUD-[0-9]{4,}$'}
+  created_at: {type: string, format: date-time}
+  target:
+    type: object
+    required: [knowledge_dir, workspace, commit]
+    properties:
+      knowledge_dir: {type: string, minLength: 1}
+      workspace: {type: [string, 'null']}
+      commit: {type: [string, 'null']}
+    additionalProperties: true
+  scope:
+    type: object
+    required: [formula_ids, mapping_ids, reasoning_ids]
+    properties:
+      formula_ids:
+        type: array
+        items: {type: string, pattern: '^FORM-[0-9]{4,}$'}
+      mapping_ids:
+        type: array
+        items: {type: string, pattern: '^MAP-[0-9]{4,}$'}
+      reasoning_ids:
+        type: array
+        items: {type: string, pattern: '^REAS-[0-9]{4,}$'}
+    additionalProperties: false
+  checks:
+    type: array
+    items:
+      type: object
+      required: [check_id, name, status, evidence]
+      properties:
+        check_id: {type: string, pattern: '^CHK-[0-9]+$'}
+        name: {type: string, minLength: 1}
+        status: {enum: [pass, warning, fail]}
+        evidence:
+          type: array
+          items: {type: string}
+      additionalProperties: false
+  findings:
+    type: array
+    items:
+      type: object
+      required: [finding_id, severity, category, record_id, path, message, remediation]
+      properties:
+        finding_id: {type: string, pattern: '^FIND-[0-9]+$'}
+        severity: {enum: [error, warning, info]}
+        category: {type: string, minLength: 1}
+        record_id: {type: [string, 'null']}
+        path: {type: [string, 'null']}
+        message: {type: string, minLength: 1}
+        remediation: {type: string, minLength: 1}
+      additionalProperties: false
+  summary:
+    type: object
+    required: [status, errors, warnings, checked_formulas, checked_mappings, checked_reasoning_chains]
+    properties:
+      status: {enum: [pass, warning, fail]}
+      errors: {type: integer, minimum: 0}
+      warnings: {type: integer, minimum: 0}
+      checked_formulas: {type: integer, minimum: 0}
+      checked_mappings: {type: integer, minimum: 0}
+      checked_reasoning_chains: {type: integer, minimum: 0}
+    additionalProperties: false
+additionalProperties: false

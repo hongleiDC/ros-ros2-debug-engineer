@@ -17,6 +17,11 @@ properties:
     items:
       type: string
       pattern: '^INC-[0-9]{4,}$'
+  experiment_ids:
+    type: array
+    items:
+      type: string
+      pattern: '^EXP-[0-9]{4,}$'
   procedure:
     type: array
     items:

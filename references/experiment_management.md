@@ -8,7 +8,7 @@
 
 ## 实验前
 
-1. 先读取活动 `GOAL-*`，确认本实验服务的主目标、`SC-*` 和 `M-*`。没有活动目标时不得创建新实验。
+1. 先执行 `goal_guard.py show` 读取活动 `GOAL-*`，确认本实验服务的主目标、`SC-*` 和 `M-*`。没有活动目标时不得创建新实验。
 2. 读取 `project_knowledge/experiments/` 中全部历史记录。
 3. 明确实验目标、可证伪假设、基线和唯一主要变量；若实验涉及计算，记录公式版本、推导 ID 和变量映射表。
 4. 记录主线：主线分支和不可变 commit。仅写 `main`、`master` 或“最新代码”不合格。
@@ -51,8 +51,53 @@
 - 假设 supported、rejected 或 inconclusive；
 - 可复用结论、下一步和不应再重复的条件。
 
-完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP，并通过 parent/compare-to 建立关系。实验完成后立即追加 `trigger: experiment` 的目标检查点，把结果是否推进成功判据写回目标进度；实验失败不能让 Agent 自动改换主目标。
+完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP，并通过 parent/compare-to 建立关系。实验完成后立即创建 `goal_guard.py checkpoint --trigger experiment`，把结果是否推进成功判据写回目标进度；实验失败不能让 Agent 自动改换主目标。
 
 ## 与回归测试的关系
 
 实验用于探索和比较，回归测试用于长期防止已知问题复发。当某次实验得到稳定、可重复且有明确判据的结果时，将其转化为 `regression_tests/` 记录，并引用 `experiment_ids`。不要把一次偶然成功直接当作 verified 回归。
+
+## 命令
+
+创建并自动捕获 Git、环境和依赖快照：
+
+```bash
+python3 scripts/experiment_registry.py create \
+  /path/to/project_knowledge EXP-0001 "IMU time offset sweep" \
+  --workspace /path/to/repository \
+  --objective "Determine whether a 3 ms offset reduces trajectory error" \
+  --hypothesis "A positive 3 ms IMU offset lowers ATE" \
+  --criterion SC-1 \
+  --milestone M-2 \
+  --alignment "This experiment directly tests whether timestamp correction satisfies SC-1" \
+  --mainline-branch main \
+  --input BAG-0004 \
+  --input-file data/run04.mcap \
+  --parameter-file config/slam.yaml \
+  --change "imu_time_offset_ms: 0 -> 3" \
+  --command "ros2 launch my_pkg replay.launch.py bag:=data/run04.mcap" \
+  --expected "ATE RMSE decreases without new timestamp regressions" \
+  --metric "ate_rmse_m:lower:m"
+```
+
+补全结果：
+
+```bash
+python3 scripts/experiment_registry.py finish \
+  /path/to/project_knowledge EXP-0001 \
+  --status completed \
+  --outcome pass \
+  --summary "ATE decreased from 0.42 m to 0.31 m" \
+  --metric "ate_rmse_m=0.31:m:baseline 0.42 m" \
+  --observation "No timestamp rollback was observed" \
+  --artifact results/exp-0001/trajectory.csv:"trajectory output" \
+  --verdict supported \
+  --confidence high \
+  --lesson "The offset sign is sensor-to-host positive" \
+  --next-action "Promote this case to regression TEST-0007"
+```
+
+## 与推理和公式知识库联动
+
+涉及数学模型或公式变量的实验必须记录相关 `FORM-*`、`MAP-*` 和 `REAS-*`。实验前审计这些记录与当前 commit 一致；实验后把中间量、单位、公式版本、推理步骤和结果证据写回知识库。若实验发现公式假设、单位、frame、方向或变量映射错误，必须将旧结论降级或弃用，不能只修改实验摘要。
+

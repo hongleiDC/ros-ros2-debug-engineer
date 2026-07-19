@@ -40,3 +40,10 @@ python3 scripts/update_knowledge.py \
 ## 发布
 
 知识更新不自动 commit 或 push。用户明确要求发布后，再报告仓库、branch、commit、文件、旧值、新值、状态和验证结果。
+
+## 推理和公式知识更新
+
+FORM、MAP、REAS 和 AUD 记录使用 `scripts/register_reasoning_knowledge.py` 登记。verified 或 deprecated 记录不得原地覆盖；公式语义、符号、单位、frame、方向、时间基准或状态顺序变化时，创建新公式版本和新映射，并标明旧记录失效范围。
+
+任何公式相关代码修改完成后，运行 `scripts/logic_audit.py --workspace ... --write-report --strict-warnings`。审计报告必须绑定当前 commit。审计失败时不得将对应结论、公式映射或代码实现提升为 verified。
+
