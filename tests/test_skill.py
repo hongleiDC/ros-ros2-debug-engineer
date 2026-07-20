@@ -450,6 +450,8 @@ class SkillTest(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
             self.assertNotIn("README.md", names)
+            self.assertNotIn("CONTRIBUTING.md", names)
+            self.assertNotIn("SECURITY.md", names)
             self.assertFalse(any(name.startswith("tests/") for name in names))
             self.assertFalse(any(name.startswith(".github/") for name in names))
             self.assertIn("scripts/preflight.py", names)

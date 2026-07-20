@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem in the Skill or bundled scripts
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, certificates, device serial numbers, customer data, or unredacted site logs.
+  - type: input
+    id: version
+    attributes:
+      label: Skill version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: ROS version/distro, OS, Python, RMW, and container if applicable
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide exact, sanitized steps and inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and evidence
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, personal data, device identifiers, and sensitive deployment information.
+          required: true

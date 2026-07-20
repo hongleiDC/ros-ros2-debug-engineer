@@ -1,90 +1,64 @@
 # ros-ros2-debug-engineer
 
-用于开发、审查、迁移和调试 ROS 1 / ROS 2 项目的 ChatGPT Skill。
+[![Validate Skill](https://github.com/hongleiDC/ros-ros2-debug-engineer/actions/workflows/validate-skill.yml/badge.svg?branch=main)](https://github.com/hongleiDC/ros-ros2-debug-engineer/actions/workflows/validate-skill.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![ROS](https://img.shields.io/badge/ROS-1%20%7C%202-22314E?logo=ros&logoColor=white)
+![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-## 这版解决的核心问题
+一个面向 ChatGPT 与 Codex 的证据驱动型 ROS 1 / ROS 2 开发、迁移和调试 Skill。它先建立项目事实模型，再处理构建、运行图、QoS、TF、时间同步、标定、rosbag、Lifecycle、Executor 以及 LiDAR–IMU–GNSS/RTK 等问题。
 
-这个 Skill **不会因为看到仓库就声称已经了解项目**。它把项目理解划分为证据等级：
+它的核心原则不是“看到代码就猜根因”，而是把事实、假设、公式、代码变量、实验和结论保持在一条可复核的证据链上。
 
-- L0：只知道仓库说明和文件列表；
-- L1：完成 package、源码、launch、参数、接口、URDF 等静态模型；
-- L2：在目标环境成功构建；
-- L3：获得 node/topic/service/action、QoS、Lifecycle、TF 和参数运行时快照；
-- L4：用日志、bag、仿真或硬件稳定复现；
-- L5：修复后通过明确回归。
+## 为什么使用它
 
-只读取代码时，它只能说“理解静态结构”，不能说“理解真实运行行为”或“根因已经确认”。
+- **证据分级**：静态扫描、构建、运行时、复现和回归结果不会混为一谈。
+- **项目感知**：先识别 package、launch、接口、参数、TF、QoS、RMW、bag、CI 和部署边界。
+- **目标防漂移**：长任务通过 `GOAL-*`、成功判据、里程碑和 checkpoint 保持主线。
+- **公式到代码可追溯**：用 FORM、MAP、REAS、AUD 关联公式、单位、frame、时间基准和代码变量。
+- **实验可复用**：记录 commit、依赖、输入、环境、命令和结果，阻止没有新增信息的重复实验。
+- **安全优先**：默认只读诊断；修改、持久化、发布和真实硬件操作需要明确授权。
+- **发行版感知**：区分稳定发行版、Rolling、ROS 1 EOL、Windows 和 `ros1_bridge` 限制。
 
-## 长任务不会遗忘核心目标
+## 项目理解等级
 
-复杂调试开始时，使用 `goal_guard.py` 建立结构化目标契约。目标契约保存用户原始请求、单一主目标、可验证成功判据、非目标、约束、里程碑、当前证据和唯一下一步。
+| 等级 | 能够证明的内容 | 不能据此声称的内容 |
+|---|---|---|
+| L0 | 仓库说明与文件列表 | package 关系或实现行为 |
+| L1 | 静态 package、源码、launch、接口和配置模型 | 构建成功或真实运行行为 |
+| L2 | 在目标环境完成构建 | 运行图、实时性或硬件行为 |
+| L3 | 获得足够的运行图、端点、QoS 和参数证据 | 问题已经稳定复现 |
+| L4 | 通过日志、bag、仿真或硬件稳定复现 | 修复已经通过回归 |
+| L5 | 修复后满足明确回归判据 | 超出测试范围的泛化结论 |
 
-```bash
-python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "Fix timestamp root cause" \
-  --workspace /path/to/project \
-  --request "修复 IMU 时间回退" \
-  --desired-outcome "长期运行无回退且精度不下降" \
-  --primary-goal "消除 IMU 时间戳回退根因，同时保持定位精度" \
-  --success "连续运行无回退::运行日志和计数器" \
-  --success "ATE 不高于基线::同一 bag 评估报告" \
-  --milestone "建立可复现基线"
+## 适用场景
+
+- ROS 1 遗留系统维护与 ROS 1 → ROS 2 迁移；
+- ament/catkin、CMake、Python packaging、接口生成和 overlay 问题；
+- DDS discovery、RMW、网络、QoS、Executor、Callback Group；
+- Lifecycle、Components、ros2_control、Nav2、MoveIt；
+- TF/URDF、内外参、时间戳、时钟域和同步；
+- rosbag1/rosbag2 录制、隔离回放、QoS override 和数据回归；
+- LiDAR、IMU、GNSS/RTK、SLAM 和状态估计；
+- 公式、标定、控制和优化代码的变量映射与逻辑审计。
+
+## 快速开始
+
+### 在 ChatGPT 中使用
+
+安装 Skill 后，可直接使用类似提示：
+
+```text
+Use $ros-ros2-debug-engineer to inspect this ROS 2 workspace,
+separate verified facts from hypotheses, and propose the smallest diagnostic experiment.
 ```
 
-每次代码修改、参数调整或实验前，必须调用 `goal_guard.py guard`，明确动作关联的 `SC-*` 和 `M-*`。每完成 2 至 3 组工具调用、发生失败、用户纠正或任务恢复时，必须 checkpoint 并重新显示主目标。目标只能在用户明确授权后修订，旧目标哈希会保留。
-
-
-## 公式与变量不允许失联
-
-涉及时间同步、坐标变换、滤波、标定、误差传播、优化和指标计算时，必须保存完整推导链，并维护数学符号到代码变量、配置参数和消息字段的映射。关键变量名必须表达物理意义、单位和 frame，例如 `time_offset_s`、`angular_velocity_rad_s`、`T_map_base`，不能随意使用 `tmp`、`val` 或含义不明的 `x1`。
-
-## 主要能力
-
-- ROS 1 遗留项目和 ROS 2 项目的 C++ / Python 开发与调试；
-- package、依赖、overlay、CMake、ament/catkin 和接口生成；
-- launch、参数、namespace、remap、Lifecycle 和 Components；
-- DDS discovery、RMW、网络、QoS、Executor 和 Callback Group；
-- TF、URDF、内参、外参、时间戳和时钟同步；
-- rosbag1 / rosbag2 录制、分析、隔离回放和回归；
-- LiDAR、IMU、GNSS/RTK 与 SLAM 数据链路；
-- ROS 1 到 ROS 2 迁移；
-- tracing、性能、单元测试、launch 集成和数据回归；
-- 核心目标契约、检查点和防漂移守卫；
-- 实验台账、实验指纹和重复实验阻止；
-- 可选的项目知识库和审计更新。
-
-
-## 推理与公式代码知识库
-
-采用项目知识库后，公式相关代码会维护四类可审计记录：
-
-- `FORM-*`：公式版本、符号、假设、坐标/时间约定和逐步推导；
-- `MAP-*`：数学符号到代码变量、配置参数、消息字段和状态索引的严格映射；
-- `REAS-*`：从已知条件到结论的逐步推理链；
-- `AUD-*`：代码 identifier、单位、frame、方向、公式版本和推理完整性审计。
-
-```bash
-python3 scripts/logic_audit.py project_knowledge \
-  --workspace . \
-  --audit-id AUD-0001 \
-  --write-report \
-  --strict-warnings
+```text
+使用 $ros-ros2-debug-engineer 检查这个 LiDAR-IMU 项目的时间同步和 TF，
+先建立事实模型，不要在没有 bag 或运行时证据时确认根因。
 ```
 
-审计可以发现映射断裂、变量语义冲突、明显的单位后缀错误、缺失单位转换、过期代码位置、推理跳步和“未验证前提却宣称结论 verified”等问题。审计通过不等于数学模型已被真实数据证明，仍需手算、单元测试、bag、仿真或硬件回归。
-
-## 安全模式
-
-默认是只读 `diagnose`。权限不会自动升级：
-
-- `diagnose`：只读分析；
-- `patch`：用户明确要求修改时，允许工作区补丁；
-- `persist`：用户明确要求时，更新项目知识；
-- `publish`：用户明确要求时，才 commit、push 或创建 PR；
-- `hardware-active`：用户明确授权并满足安全条件时，才发送命令或激活真实硬件。
-
-bag 回放默认使用白名单和隔离环境，避免把控制 topic 回放到现场机器人。
-
-## 安装与打包
+### 从源码验证和打包
 
 ```bash
 git clone https://github.com/hongleiDC/ros-ros2-debug-engineer.git
@@ -95,123 +69,120 @@ python3 -m unittest discover -s tests -v
 python3 scripts/package_skill.py . dist
 ```
 
-产物固定为：
+生成的安装包位于 `dist/skill.zip`。
 
-```text
-dist/skill.zip
-```
+## 工作流概览
 
-## 建立项目事实模型
+1. 选择 `lite`、`standard` 或 `audited` 执行强度。
+2. 运行依赖和发行版预检。
+3. 建立 L1 静态项目事实模型。
+4. 问题涉及运行时后，再采集受限、只读的运行快照。
+5. 建立事实、候选假设、反证和缺失证据。
+6. 设计成本最低、区分度最高的实验。
+7. 用户授权后修改代码或项目知识。
+8. 用构建、测试、bag、仿真或硬件证据验证对应成功判据。
 
-### 静态扫描
+完整工作规范见 [SKILL.md](SKILL.md)。
+
+## 主要工具
+
+| 工具 | 用途 |
+|---|---|
+| `preflight.py` | 检查 Python 模块、Git 和 ROS CLI |
+| `inspect_workspace.py` | 生成只读静态事实模型和能力证据 |
+| `collect_runtime_snapshot.py` | 分级收集 ROS 运行图、QoS 和参数证据 |
+| `goal_guard.py` | 建立目标契约、动作守卫和 checkpoint |
+| `experiment_registry.py` | 登记实验、计算指纹、检测重复并记录结果 |
+| `init_project_knowledge.py` | 在用户授权后初始化项目知识库 |
+| `validate_knowledge.py` | 使用 JSON Schema 验证知识记录 |
+| `update_knowledge.py` | 带锁、恢复日志和回滚地更新事实 |
+| `register_reasoning_knowledge.py` | 登记 FORM、MAP、REAS 和 AUD 记录 |
+| `logic_audit.py` | 审计公式版本、变量语义、单位、frame 和推理链 |
+| `package_skill.py` | 校验 Skill 并生成 `skill.zip` |
+
+## 静态事实模型
 
 ```bash
 python3 scripts/inspect_workspace.py /path/to/workspace --format yaml
 ```
 
-输出包括：
+扫描器将能力区分为：
 
-- Git branch、commit 和 dirty 状态；
-- package、format、build type、依赖和语言；
-- executable、component、launch、参数和自定义接口；
-- URDF/xacro、plugin、Docker、systemd/udev、测试和 bag；
-- Lifecycle、Callback Group、ros2_control、Nav2、MoveIt、TF、LiDAR、IMU 和 GNSS 线索；
-- 当前理解等级和无法确认的内容。
+- `observed`：在源码或配置中找到较强静态证据；
+- `candidate`：只找到依赖、通用关键词或弱证据；
+- `unknown`：没有足够证据。
 
-扫描结果是索引，不是运行时证明。
+`observed` 仍不等于运行时测量。依赖名称或注释不会直接把能力提升为已确认。
 
-### 运行时只读快照
+## 运行时快照
 
 ```bash
-python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile basic --format yaml
+python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile basic
+python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile communication --detail-limit 20
+python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile full --detail-limit 20
 ```
 
-`basic` 只做轻量图快照；需要端点 QoS 时使用 `--profile communication`，需要 node 详情和参数 dump 时使用 `--profile full`。部分命令成功不会自动宣称达到 L3。工具不 publish、不 echo 数据、不调用 service/action，也不改变参数。
+- `basic`：环境、doctor、node 和 topic 基础图；
+- `communication`：增加 service、action 和 topic 端点/QoS 详情；
+- `full`：增加 component、lifecycle、node 详情和参数 dump。
 
-## 发行版兼容
+输出采用流式有界采集。部分命令成功只表示观察到了部分运行时，不会自动达到 L3。
 
-命令和补丁必须先识别 `ROS_VERSION`、`ROS_DISTRO`、操作系统和 RMW。Skill 包含 Lyrical Luth、旧版 ROS 2、Windows、ROS 1 Noetic EOL 与 `ros1_bridge` 限制的分流规则；Rolling API 不会被默认当成所有稳定发行版都支持。
+## 目标、实验与推理知识
 
-## 项目知识库
+复杂任务使用 `goal_guard.py` 保存主目标、成功判据、非目标、约束和里程碑。涉及数学模型或物理变量时，项目知识库可以维护：
 
-知识库是可选能力，不是每个任务都必须创建。
+- `FORM-*`：公式版本、符号、假设和推导；
+- `MAP-*`：公式符号到代码变量、参数和消息字段的映射；
+- `REAS-*`：从已知条件到结论的逐步推理；
+- `AUD-*`：结构、语义、单位、frame、方向和代码位置审计。
 
-只有用户明确要求时初始化：
+这些记录是可选的长期项目记忆，不会在没有用户授权时自动写入目标仓库。
 
-```bash
-python3 scripts/init_project_knowledge.py \
-  /path/to/target-project \
-  --project-id my_robot
-```
+## 兼容性
 
-创建：
+- Python 3.10 及以上；
+- CI 覆盖 Ubuntu、Windows、Python 3.10 和 3.12；
+- 支持 ROS 1 与 ROS 2 项目分析，但命令和 API 必须按目标发行版分流；
+- ROS 1 Noetic 已结束官方支持，迁移和 bridge 方案必须明确 EOL 风险；
+- Rolling 的新接口不会默认视为稳定发行版通用接口。
+
+具体规则见 [发行版兼容与路由](references/distro_compatibility.md)。
+
+## 安全边界
+
+默认模式是只读 `diagnose`。Skill 不会因为诊断请求自动修改项目、回放 bag、调用控制 service/action、激活控制器或操作真实硬件。请勿在公开 Issue 中提交：
+
+- 设备序列号、证书、密钥或访问令牌；
+- 未脱敏的现场日志、地图、点云或客户数据；
+- DDS Security keystore、网络拓扑或生产部署凭据。
+
+安全问题请阅读 [SECURITY.md](SECURITY.md)。
+
+## 贡献
+
+欢迎提交问题报告和改进。变更必须保持证据等级、权限边界和跨平台兼容，新增行为需要测试。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 项目结构
 
 ```text
-<target-project>/
-├── .ros_debug_project.yaml
-└── project_knowledge/
-    ├── README.md
-    ├── project.yaml
-    ├── project_model.yaml
-    ├── active_configuration.yaml
-    ├── topics.yaml
-    ├── timing.yaml
-    ├── CHANGELOG.md
-    ├── devices/
-    ├── calibrations/
-    ├── bags/
-    ├── incidents/
-    ├── decisions/
-    ├── goals/
-    ├── experiments/
-    ├── formulas/
-    ├── variable_mappings/
-    ├── reasoning_chains/
-    ├── audits/
-    └── regression_tests/
+.
+├── SKILL.md
+├── agents/openai.yaml
+├── assets/
+├── references/
+│   └── schemas/
+├── scripts/
+├── tests/
+└── .github/workflows/
 ```
 
-验证使用正式 JSON Schema：
+项目专属 bag、点云、设备信息、标定结果和长期结论不应打包进通用 Skill。
 
-```bash
-python3 scripts/validate_knowledge.py /path/to/project_knowledge
-```
+## 许可证
 
-注意：结构验证通过不代表设备参数、外参或根因已经真实验证。
+本项目采用 [Apache License 2.0](LICENSE)。使用、修改和分发时请遵守许可证中的版权、专利、声明保留和变更标注要求。
 
-更新示例：
+## 免责声明
 
-```bash
-python3 scripts/update_knowledge.py \
-  /path/to/project_knowledge \
-  active_configuration.yaml \
-  configuration.use_sim_time \
-  true \
-  --status measured \
-  --reason "bag replay configuration" \
-  --evidence "launch file and runtime parameter"
-```
-
-更新工具具有文件锁、未完成事务恢复、JSON Schema 验证、verified 保护和失败回滚。
-
-创建 incident：
-
-```bash
-python3 scripts/new_incident.py \
-  /path/to/project_knowledge \
-  INC-0006 \
-  "rtk timestamp mismatch"
-```
-
-## Skill 目录
-
-```text
-SKILL.md
-agents/openai.yaml
-references/*.md
-references/schemas/*.yaml
-scripts/*.py
-tests/*.py
-```
-
-具体项目的 bag、点云、设备序列号、标定和长期结论不应打包进 Skill。
+本项目提供工程诊断和开发辅助，不替代真实机器人上的安全评审、领域专家确认或硬件验收。任何控制、运动、标定写入和现场部署都应在隔离环境验证，并由操作者承担最终责任。

@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a new ROS workflow, diagnostic rule, or reusable tool
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Engineering problem
+      description: What ROS task is currently difficult, unsafe, or repetitive?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: input
+    id: compatibility
+    attributes:
+      label: ROS distributions and platforms
+      description: List the versions this should support.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: References or reproducible evidence
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: Permission impact
+      options:
+        - label: This proposal identifies whether it changes files, replays bags, invokes services/actions, or activates hardware.
+          required: true

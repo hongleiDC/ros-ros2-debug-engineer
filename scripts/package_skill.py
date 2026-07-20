@@ -15,7 +15,10 @@ import yaml
 MAX_BYTES = 25 * 1024 * 1024
 EXCLUDED = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", "dist", ".venv", "venv"}
 BUNDLE_EXCLUDED_ROOTS = {".github", "tests"}
-BUNDLE_EXCLUDED_FILES = {"README.md", "LICENSE", "LICENSE.md"}
+BUNDLE_EXCLUDED_FILES = {
+    "README.md", "LICENSE", "LICENSE.md", "CONTRIBUTING.md", "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+}
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
 
