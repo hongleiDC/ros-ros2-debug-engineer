@@ -13,10 +13,15 @@ import re
 import subprocess
 from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
+try:
+    from jsonschema import Draft202012Validator, FormatChecker
+except ModuleNotFoundError:
+    raise SystemExit("Missing dependency 'jsonschema'. Run: python3 scripts/preflight.py --require knowledge") from None
 import yaml
 
-from goal_utils import active_goal, contract_hash, find_goal
+from goal_utils import active_goal, atomic_write_yaml, contract_hash, find_goal
+from lock_utils import file_lock
+from workspace_fingerprint import dirty_hash
 
 ID_RE = re.compile(r"^EXP-[0-9]{4,}$")
 DEP_NAMES = {"package.xml", "CMakeLists.txt", "setup.py", "setup.cfg", "pyproject.toml", "poetry.lock", "uv.lock", "Pipfile", "Pipfile.lock"}
@@ -41,7 +46,16 @@ def file_sha(path: Path) -> str:
 
 
 def git(workspace: Path, *args: str) -> str | None:
-    result = subprocess.run(["git", "-C", str(workspace), *args], text=True, capture_output=True, check=False)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace), *args],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -53,39 +67,6 @@ def dependency_snapshot(workspace: Path) -> list[dict[str, str]]:
         if path.name in DEP_NAMES or path.name.startswith("requirements") and path.suffix == ".txt" or path.name.startswith("Dockerfile") or path.suffix in DEP_SUFFIXES:
             result.append({"path": path.relative_to(workspace).as_posix(), "sha256": file_sha(path)})
     return result
-
-
-def dirty_hash(workspace: Path, excluded_roots: list[Path] | None = None) -> tuple[bool, str | None]:
-    excluded: list[Path] = []
-    for root in excluded_roots or []:
-        resolved = root.resolve()
-        if resolved == workspace or workspace in resolved.parents:
-            excluded.append(resolved)
-
-    def ignored(relative_text: str) -> bool:
-        relative_text = relative_text.strip().strip('"')
-        if " -> " in relative_text:
-            relative_text = relative_text.split(" -> ", 1)[1]
-        candidate = (workspace / relative_text).resolve()
-        return any(candidate == root or root in candidate.parents for root in excluded)
-
-    raw_status = git(workspace, "status", "--porcelain=v1", "--untracked-files=all") or ""
-    status_lines = [line for line in raw_status.splitlines() if len(line) >= 4 and not ignored(line[3:])]
-    if not status_lines:
-        return False, None
-    diff_args = ["diff", "--binary", "HEAD", "--", "."]
-    for root in excluded:
-        relative = root.relative_to(workspace).as_posix()
-        diff_args.extend([f":(exclude){relative}", f":(exclude){relative}/**"])
-    diff = git(workspace, *diff_args) or ""
-    payload = "\n".join(status_lines).encode() + b"\0" + diff.encode()
-    for line in status_lines:
-        if line.startswith("?? "):
-            relative_text = line[3:].strip().strip('"')
-            path = (workspace / relative_text).resolve()
-            if path.is_file() and workspace in path.parents:
-                payload += b"\0" + relative_text.encode() + b"\0" + path.read_bytes()
-    return True, sha(payload)
 
 
 def input_record(workspace: Path, raw: str, kind: str) -> dict[str, str]:
@@ -117,6 +98,20 @@ def fingerprint(record: dict[str, Any]) -> str:
         "inputs": record["inputs"],
         "changes": record["changes"],
         "commands": record["procedure"]["commands"],
+    }
+    return sha(json.dumps(selected, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
+
+
+def similarity_fingerprint(record: dict[str, Any]) -> str:
+    """Detect semantically repeated procedures even when commit or host details differ."""
+    selected = {
+        "objective": record["objective"],
+        "hypothesis": record["hypothesis"],
+        "inputs": record["inputs"],
+        "changes": record["changes"],
+        "commands": record["procedure"]["commands"],
+        "expected": record["procedure"]["expected"],
+        "metrics": record["procedure"].get("metrics", []),
     }
     return sha(json.dumps(selected, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
 
@@ -174,8 +169,8 @@ def records(folder: Path) -> list[dict[str, Any]]:
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 found.append(data)
-        except Exception:
-            continue
+        except Exception as exc:
+            raise SystemExit(f"cannot check duplicates because {path} is invalid: {exc}") from exc
     return found
 
 
@@ -187,8 +182,6 @@ def create(args: argparse.Namespace) -> int:
     folder = knowledge / "experiments"
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / f"{args.experiment_id}.yaml"
-    if target.exists():
-        raise SystemExit(f"experiment already exists: {args.experiment_id}")
     goal_state = (args.goal_state or knowledge).resolve()
     dirty, dirty_fp = dirty_hash(workspace, [knowledge, goal_state])
     current = git(workspace, "rev-parse", "HEAD") or "unknown"
@@ -233,23 +226,57 @@ def create(args: argparse.Namespace) -> int:
         "conclusion": {"verdict": "pending", "confidence": "low", "summary": None, "lessons": [], "next_actions": []},
     }
     record["fingerprint"]["value"] = fingerprint(record)
-    matches = [r.get("experiment_id") for r in records(folder) if r.get("fingerprint", {}).get("value") == record["fingerprint"]["value"]]
-    record["duplicate_check"]["exact_match_ids"] = [m for m in matches if isinstance(m, str)]
-    if matches and not args.allow_duplicate:
-        raise SystemExit(f"duplicate experiment blocked; matching IDs: {', '.join(matches)}")
-    if matches and (not args.duplicate_reason or len(args.duplicate_reason.strip()) < 12):
-        raise SystemExit("--allow-duplicate requires a specific --duplicate-reason of at least 12 characters")
-    validate(record)
-    target.write_text(yaml.safe_dump(record, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    similar_value = similarity_fingerprint(record)
+    with file_lock(folder / ".experiment-registry.lock"):
+        if target.exists():
+            raise SystemExit(f"experiment already exists: {args.experiment_id}")
+        existing = records(folder)
+        matches = [r.get("experiment_id") for r in existing if r.get("fingerprint", {}).get("value") == record["fingerprint"]["value"]]
+        similar = [
+            r.get("experiment_id") for r in existing
+            if r.get("fingerprint", {}).get("value") != record["fingerprint"]["value"]
+            and similarity_fingerprint(r) == similar_value
+        ]
+        record["duplicate_check"]["exact_match_ids"] = [m for m in matches if isinstance(m, str)]
+        record["duplicate_check"]["similar_match_ids"] = [m for m in similar if isinstance(m, str)]
+        if matches and not args.allow_duplicate:
+            raise SystemExit(f"duplicate experiment blocked; matching IDs: {', '.join(matches)}")
+        if matches and (not args.duplicate_reason or len(args.duplicate_reason.strip()) < 12):
+            raise SystemExit("--allow-duplicate requires a specific --duplicate-reason of at least 12 characters")
+        validate(record)
+        atomic_write_yaml(target, record)
+    print(target)
+    return 0
+
+
+def start_run(args: argparse.Namespace) -> int:
+    folder = args.knowledge.resolve() / "experiments"
+    target = folder / f"{args.experiment_id}.yaml"
+    with file_lock(folder / ".experiment-registry.lock"):
+        if not target.is_file():
+            raise SystemExit(f"experiment not found: {args.experiment_id}")
+        record = yaml.safe_load(target.read_text(encoding="utf-8"))
+        if record.get("status") != "planned":
+            raise SystemExit(f"experiment must be planned before start; current status: {record.get('status')}")
+        timestamp = now()
+        record["status"] = "running"
+        record["updated_at"] = timestamp
+        record["results"]["run_started_at"] = timestamp
+        validate(record)
+        atomic_write_yaml(target, record)
     print(target)
     return 0
 
 
 def finish(args: argparse.Namespace) -> int:
-    target = args.knowledge.resolve() / "experiments" / f"{args.experiment_id}.yaml"
+    folder = args.knowledge.resolve() / "experiments"
+    target = folder / f"{args.experiment_id}.yaml"
     if not target.is_file():
         raise SystemExit(f"experiment not found: {args.experiment_id}")
     record = yaml.safe_load(target.read_text(encoding="utf-8"))
+    if record.get("status") != "running":
+        raise SystemExit("experiment must be started before it can be finished")
+    original_updated_at = record.get("updated_at")
     record["status"] = args.status
     record["updated_at"] = now()
     record["results"].update({"outcome": args.outcome, "run_finished_at": now(), "summary": args.summary})
@@ -292,7 +319,11 @@ def finish(args: argparse.Namespace) -> int:
         record["results"]["logs"].append({"path": str(path), "sha256": file_sha(path), "description": description})
     record["conclusion"].update({"verdict": args.verdict, "confidence": args.confidence, "summary": args.summary, "lessons": args.lesson, "next_actions": args.next_action})
     validate(record)
-    target.write_text(yaml.safe_dump(record, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    with file_lock(folder / ".experiment-registry.lock"):
+        latest = yaml.safe_load(target.read_text(encoding="utf-8"))
+        if latest.get("status") != "running" or latest.get("updated_at") != original_updated_at:
+            raise SystemExit("experiment changed while results were being prepared; retry finish")
+        atomic_write_yaml(target, record)
     print(target)
     return 0
 
@@ -312,6 +343,9 @@ def parser() -> argparse.ArgumentParser:
     create_p.add_argument("--command", action="append", required=True); create_p.add_argument("--expected", action="append", required=True)
     create_p.add_argument("--allow-duplicate", action="store_true"); create_p.add_argument("--duplicate-reason")
     create_p.set_defaults(func=create)
+    start_p = commands.add_parser("start")
+    start_p.add_argument("knowledge", type=Path); start_p.add_argument("experiment_id")
+    start_p.set_defaults(func=start_run)
     finish_p = commands.add_parser("finish")
     finish_p.add_argument("knowledge", type=Path); finish_p.add_argument("experiment_id")
     finish_p.add_argument("--status", choices=["completed", "aborted", "inconclusive"], required=True)

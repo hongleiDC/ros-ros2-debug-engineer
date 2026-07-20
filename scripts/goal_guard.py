@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 from datetime import datetime, timezone
-import fcntl
 import hashlib
 import json
 import os
@@ -13,12 +11,17 @@ from pathlib import Path
 import platform
 import re
 import subprocess
-from typing import Any, Iterator
+from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker
+try:
+    from jsonschema import Draft202012Validator, FormatChecker
+except ModuleNotFoundError as exc:
+    raise SystemExit("Missing dependency 'jsonschema'. Run: python3 scripts/preflight.py --require knowledge") from None
 import yaml
 
 from goal_utils import active_goal, atomic_write_yaml, contract_hash, find_goal, goal_folder, goal_records
+from lock_utils import file_lock
+from workspace_fingerprint import dirty_hash
 
 GOAL_RE = re.compile(r"^GOAL-[0-9]{4,}$")
 
@@ -28,32 +31,21 @@ def now() -> str:
 
 
 def git(workspace: Path, *args: str) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(workspace), *args],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace), *args],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
-
-def dirty_hash(workspace: Path) -> tuple[bool, str | None]:
-    status = git(workspace, "status", "--porcelain=v1", "--untracked-files=all") or ""
-    if not status:
-        return False, None
-    diff = git(workspace, "diff", "--binary", "HEAD") or ""
-    payload = status.encode("utf-8") + b"\0" + diff.encode("utf-8")
-    for line in status.splitlines():
-        if not line.startswith("?? "):
-            continue
-        candidate = (workspace / line[3:]).resolve()
-        if candidate.is_file() and (candidate == workspace or workspace in candidate.parents):
-            payload += b"\0" + line[3:].encode("utf-8") + b"\0" + candidate.read_bytes()
-    return True, sha(payload)
 
 
 def load_schema() -> dict[str, Any]:
@@ -75,17 +67,10 @@ def validate(record: dict[str, Any]) -> None:
         raise SystemExit("contract_hash does not match the current goal contract")
 
 
-@contextmanager
-def state_lock(state_root: Path) -> Iterator[None]:
+def state_lock(state_root: Path):
     state_root = state_root.resolve()
     state_root.mkdir(parents=True, exist_ok=True)
-    lock_path = state_root / ".goal-guard.lock"
-    with lock_path.open("a+", encoding="utf-8") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+    return file_lock(state_root / ".goal-guard.lock")
 
 
 def parse_success(values: list[str]) -> list[dict[str, Any]]:

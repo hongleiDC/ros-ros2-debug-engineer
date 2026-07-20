@@ -29,9 +29,28 @@ Skill 本身不会自动了解目标项目。开始诊断前，必须根据 [项
 
 执行任何写入、bag 回放或真实硬件任务前，读取 [安全与权限](references/safety_and_permissions.md)。
 
+## 执行强度
+
+- `lite`：短小只读定位、单一 package、无公式或安全关键逻辑。建立简短目标与证据边界即可；超过 3 组工具调用或需要修改时升级为 `standard`。
+- `standard`：默认用于代码修改、多 package、运行时诊断和可重复实验。创建 `GOAL-*`，只为实际涉及的公式建立 FORM/MAP/REAS。
+- `audited`：用于标定、坐标变换、控制、状态估计、安全关键硬件或需要长期审计的迁移。使用完整目标契约、公式变量映射、推理链、逻辑审计和实验登记。
+
+强度只影响记录深度，不降低证据、权限和硬件安全要求。
+
+## 第负一步：环境与发行版预检
+
+在调用依赖 PyYAML、jsonschema 或 ROS CLI 的脚本前执行：
+
+```bash
+python3 scripts/preflight.py --require knowledge
+python3 scripts/preflight.py --require ros-runtime
+```
+
+预检被阻断时，报告缺失项和下一步，不把依赖导入异常误诊为项目故障。命令、API 或 CI 涉及发行版差异时，读取 [ROS 发行版兼容与路由](references/distro_compatibility.md)，并记录目标发行版而不是默认采用 Rolling。
+
 ## 第零步：建立并持续读取核心目标
 
-当任务涉及代码修改、多轮诊断、实验、多个 package，或预计需要多组工具调用时，先读取 [核心目标契约与防漂移](references/goal_management.md)，并创建 `GOAL-*`：
+当 `standard` 或 `audited` 任务涉及代码修改、多轮诊断、实验、多个 package，或预计需要多组工具调用时，先读取 [核心目标契约与防漂移](references/goal_management.md)，并创建 `GOAL-*`：
 
 ```bash
 python3 scripts/goal_guard.py start /path/to/goal-state GOAL-0001 "task title" \
@@ -72,7 +91,7 @@ python3 scripts/inspect_workspace.py /path/to/workspace --format yaml
 4. 若问题涉及运行时，再执行只读快照：
 
 ```bash
-python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
+python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile basic --format yaml
 ```
 
 5. 若用户提供日志、bag、设备配置或复现步骤，将其加入事实模型，并记录来源、时间、commit 和适用范围。
@@ -85,6 +104,7 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 - 需要把推理、公式和代码逻辑持久化或审计：读取 [推理、公式与代码逻辑知识库](references/reasoning_knowledge_base.md)。
 - 通用分层定位：读取 [调试工作流](references/debugging_workflow.md)。
 - ROS 2 DDS、网络、QoS、lifecycle、component、executor：读取 [ROS2 运行时](references/ros2_runtime.md)。
+- 发行版选择、EOL、Windows 和跨版本 API/CLI：读取 [发行版兼容与路由](references/distro_compatibility.md)。
 - 时间戳、时钟域和同步：读取 [时间与同步](references/time_sync.md)。
 - TF、URDF、内参与外参：读取 [TF 与标定](references/tf_calibration.md)。
 - rosbag1/rosbag2 录制和回放：读取 [rosbag 调试](references/rosbag.md)。
@@ -143,6 +163,7 @@ python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
 ## 工具
 
 - `scripts/goal_guard.py`：建立目标契约、关键动作守卫、检查点、显式修订和完成判定。
+- `scripts/preflight.py`：无第三方依赖地检查 Python 模块、Git 和 ROS CLI 是否满足所选工作流。
 - `scripts/inspect_workspace.py`：只读扫描 ROS 工作空间并生成静态项目事实模型。
 - `scripts/collect_runtime_snapshot.py`：运行只读 ROS 命令，收集运行图和环境快照。
 - `scripts/init_project_knowledge.py`：显式初始化项目知识库。

@@ -1,5 +1,7 @@
 # ROS2 运行时
 
+先读取 [发行版兼容与路由](distro_compatibility.md)。executor、CLI 参数和 rclpy API 可能随发行版变化；不要把 Rolling 或 Lyrical 的新接口直接用于旧版本。
+
 ## DDS 与发现
 
 检查并记录：
@@ -24,6 +26,16 @@ ros2 topic info /topic -v
 ros2 node info /node
 ros2 doctor --report
 ```
+
+需要系统快照时使用分级采集：
+
+```bash
+python3 scripts/collect_runtime_snapshot.py --profile basic
+python3 scripts/collect_runtime_snapshot.py --profile communication --detail-limit 20
+python3 scripts/collect_runtime_snapshot.py --profile full --detail-limit 20
+```
+
+`basic` 或部分命令成功只证明观察到部分运行时，不自动达到 L3。QoS 诊断应保留不兼容事件、端点 GID、发布/订阅数量和 `topic info --verbose` 证据。rosbag2 录制/回放与线上端点 QoS 不匹配时，使用发行版支持的 QoS override 文件并记录其内容。
 
 ## Lifecycle
 
@@ -50,6 +62,8 @@ ros2 doctor --report
 - 长回调阻塞 timer、subscription 或 parameter callback；
 - 多锁顺序、条件变量和 shutdown join；
 - callback group 与 component container 的组合。
+
+Lyrical 引入 `EventsCBGExecutor` 和 `rclpy` AsyncNode 等新能力；只在目标发行版确认支持且有版本门控/CI 时使用。callback group 的静态存在不能证明 executor 并发行为，仍需 tracing、时间线或最小复现实验。
 
 ## 参数
 

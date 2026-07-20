@@ -15,11 +15,58 @@ import xml.etree.ElementTree as ET
 import yaml
 
 EXCLUDED_DIRS = {
-    ".git", ".github", ".idea", ".vscode", "build", "install", "log",
+    ".git", ".idea", ".vscode", "build", "install", "log",
     "__pycache__", ".pytest_cache", ".mypy_cache", ".venv", "venv", "node_modules",
 }
 TEXT_SUFFIXES = {".cpp", ".cc", ".cxx", ".c", ".hpp", ".h", ".py", ".xml", ".yaml", ".yml", ".launch", ".xacro", ".urdf"}
+TEXT_NAMES = {"CMakeLists.txt", "setup.py", "setup.cfg", "package.xml"}
 MAX_TEXT_BYTES = 2 * 1024 * 1024
+MAX_EVIDENCE_PER_CAPABILITY = 12
+
+SIGNALS: dict[str, dict[str, list[str]]] = {
+    "ros1_signals": {
+        "observed": [r"\bros::nodehandle\b", r"\brospy\.(?:publisher|subscriber|init_node)\b", r"\bcatkin_package\s*\("],
+        "candidate": [r"\b(?:roscpp|rospy|catkin)\b"],
+    },
+    "ros2_signals": {
+        "observed": [r"\brclcpp::", r"\brclpy\.(?:node|init|create_node)\b", r"\brosidl_generate_interfaces\s*\("],
+        "candidate": [r"\b(?:rclcpp|rclpy|ament_cmake)\b"],
+    },
+    "lifecycle": {
+        "observed": [r"\blifecyclenode\b", r"\bon_(?:configure|activate|deactivate|cleanup|shutdown)\s*\(", r"\btrigger_transition\s*\("],
+        "candidate": [r"\b(?:rclcpp_lifecycle|rclpy\.lifecycle|lifecycle_msgs)\b"],
+    },
+    "components": {
+        "observed": [r"\brclcpp_components_register_nodes?\s*\(", r"\brclcpp_components::nodefactory\b"],
+        "candidate": [r"\brclcpp_components\b"],
+    },
+    "callback_groups": {
+        "observed": [r"\bcreate_callback_group\s*\(", r"\b(?:reentrant|mutuallyexclusive)callbackgroup\b"],
+        "candidate": [r"\bcallbackgroup\b"],
+    },
+    "ros2_control": {
+        "observed": [r"\bhardware_interface::", r"\bcontroller_interface::", r"\bcontroller_manager\b"],
+        "candidate": [r"\bros2_control\b", r"\bhardware_interface\b"],
+    },
+    "nav2": {"observed": [r"\bnav2_[a-z0-9_]+"], "candidate": [r"\bnav2\b"]},
+    "moveit": {"observed": [r"\bmoveit::", r"\bmoveit_[a-z0-9_]+"], "candidate": [r"\bmoveit\b"]},
+    "lidar": {
+        "observed": [r"\bpointcloud2\b", r"\b(?:velodyne|ouster|livox)_[a-z0-9_]+"],
+        "candidate": [r"\b(?:lidar|velodyne|ouster|livox)\b"],
+    },
+    "imu": {
+        "observed": [r"\bsensor_msgs(?:::msg::|/msg/|/)imu\b", r"\bsensor_msgs\.msg\.imu\b"],
+        "candidate": [r"\bimu\b"],
+    },
+    "gnss_rtk": {
+        "observed": [r"\bnavsatfix\b", r"\b(?:gnss|rtk)_[a-z0-9_]+"],
+        "candidate": [r"\b(?:gnss|rtk|gps)\b"],
+    },
+    "tf": {
+        "observed": [r"\b(?:static)?transformbroadcaster\b", r"\btf2_ros(?:::|\.)"],
+        "candidate": [r"\btf2\b", r"\bstatic_transform_publisher\b"],
+    },
+}
 
 
 def rel(path: Path, root: Path) -> str:
@@ -90,7 +137,14 @@ def parse_package(path: Path, root: Path) -> dict[str, Any]:
         data["parse_errors"].append(str(exc))
 
     package_files = [p for p in iter_files(package_root) if root in p.parents or p == root]
-    suffixes = {p.suffix.lower() for p in package_files}
+    implementation_files = [
+        p for p in package_files
+        if not {"launch", "config", "params", "test", "tests", "doc", "docs"}.intersection(
+            {part.lower() for part in p.relative_to(package_root).parts[:-1]}
+        )
+        and p.name not in {"setup.py", "conftest.py"}
+    ]
+    suffixes = {p.suffix.lower() for p in implementation_files}
     languages: list[str] = []
     if suffixes.intersection({".cpp", ".cc", ".cxx", ".c", ".hpp", ".h"}):
         languages.append("c++")
@@ -114,11 +168,26 @@ def parse_package(path: Path, root: Path) -> dict[str, Any]:
 
 def safe_text(path: Path) -> str:
     try:
-        if path.stat().st_size > MAX_TEXT_BYTES or path.suffix.lower() not in TEXT_SUFFIXES:
+        if path.stat().st_size > MAX_TEXT_BYTES or (path.suffix.lower() not in TEXT_SUFFIXES and path.name not in TEXT_NAMES):
             return ""
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def without_comments(path: Path, text: str) -> str:
+    """Reduce strong-signal promotions caused by ordinary source comments."""
+    suffix = path.suffix.lower()
+    if suffix in {".cpp", ".cc", ".cxx", ".c", ".hpp", ".h"}:
+        text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+        return re.sub(r"//.*", " ", text)
+    if suffix == ".py":
+        return re.sub(r"#.*", " ", text)
+    if suffix in {".xml", ".xacro", ".urdf", ".launch"}:
+        return re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
+    if suffix in {".yaml", ".yml"}:
+        return re.sub(r"#.*", " ", text)
+    return text
 
 
 def main() -> int:
@@ -141,7 +210,9 @@ def main() -> int:
         "plugins": [], "docker": [], "systemd_udev": [], "tests": [], "bags": [],
         "ci": [], "knowledge": [],
     }
-    combined_text_parts: list[str] = []
+    evidence: dict[str, dict[str, list[dict[str, str]]]] = {
+        name: {"observed": [], "candidate": []} for name in SIGNALS
+    }
     for path in files:
         r = rel(path, root)
         lower = r.lower()
@@ -169,25 +240,46 @@ def main() -> int:
             artifacts["ci"].append(r)
         if path.name == ".ros_debug_project.yaml" or lower.startswith("project_knowledge/"):
             artifacts["knowledge"].append(r)
-        text = safe_text(path)
-        if text:
-            combined_text_parts.append(text[:200_000])
+        text = safe_text(path).lower()
+        if not text:
+            continue
+        if lower.startswith(".github/"):
+            continue
+        strong_text = without_comments(path, text)
+        strong_allowed = path.name not in {"package.xml", "setup.py", "setup.cfg"}
+        for capability, levels in SIGNALS.items():
+            for level in ("observed", "candidate"):
+                if level == "observed" and not strong_allowed:
+                    continue
+                if len(evidence[capability][level]) >= MAX_EVIDENCE_PER_CAPABILITY:
+                    continue
+                signal_text = strong_text if level == "observed" else text
+                for pattern in levels[level]:
+                    match = re.search(pattern, signal_text, re.IGNORECASE)
+                    if match:
+                        evidence[capability][level].append({"path": r, "signal": match.group(0)[:120]})
+                        break
 
-    combined = "\n".join(combined_text_parts).lower()
-    capabilities = {
-        "ros1_signals": any(x in combined for x in ["ros::nodehandle", "catkin_package", "rospy.", "nodelet"]),
-        "ros2_signals": any(x in combined for x in ["rclcpp::", "rclpy.", "ament_cmake", "rosidl_generate_interfaces"]),
-        "lifecycle": any(x in combined for x in ["lifecyclenode", "rclcpp_lifecycle", "lifecycle_msgs"]),
-        "components": any(x in combined for x in ["rclcpp_components", "rclcpp_components_register_node"]),
-        "callback_groups": any(x in combined for x in ["create_callback_group", "callbackgroup", "reentrantcallbackgroup"]),
-        "ros2_control": any(x in combined for x in ["ros2_control", "controller_manager", "hardware_interface"]),
-        "nav2": "nav2_" in combined or "nav2" in combined,
-        "moveit": "moveit" in combined,
-        "lidar": any(x in combined for x in ["lidar", "pointcloud2", "velodyne", "ouster", "livox"]),
-        "imu": any(x in combined for x in ["sensor_msgs::msg::imu", "sensor_msgs/imu", "imu"]),
-        "gnss_rtk": any(x in combined for x in ["navsatfix", "gnss", "rtk", "gps"]),
-        "tf": any(x in combined for x in ["tf2", "transformbroadcaster", "static_transform_publisher"]),
-        "custom_interfaces": bool(artifacts["interfaces"]),
+    capability_evidence: dict[str, dict[str, Any]] = {}
+    capabilities: dict[str, bool] = {}
+    for name in SIGNALS:
+        observed = evidence[name]["observed"]
+        candidates = evidence[name]["candidate"]
+        status_name = "observed" if observed else "candidate" if candidates else "unknown"
+        capability_evidence[name] = {
+            "status": status_name,
+            "confidence": "medium" if observed else "low" if candidates else "none",
+            "evidence": observed or candidates,
+            "limitation": "Static signal only; runtime activation and behavior are not proven.",
+        }
+        capabilities[name] = bool(observed)
+    custom_evidence = [{"path": path, "signal": "custom interface definition"} for path in artifacts["interfaces"][:MAX_EVIDENCE_PER_CAPABILITY]]
+    capabilities["custom_interfaces"] = bool(custom_evidence)
+    capability_evidence["custom_interfaces"] = {
+        "status": "observed" if custom_evidence else "unknown",
+        "confidence": "high" if custom_evidence else "none",
+        "evidence": custom_evidence,
+        "limitation": "Definition presence does not prove generation, build success, or runtime use.",
     }
 
     branch = run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
@@ -195,7 +287,7 @@ def main() -> int:
     status = run_git(root, "status", "--porcelain")
     model = {
         "schema_version": 1,
-        "status": "measured",
+        "status": "observed",
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "repository": {
             "path": str(root),
@@ -211,6 +303,7 @@ def main() -> int:
         "packages": packages,
         "artifacts": {key: sorted(set(value)) for key, value in artifacts.items()},
         "capabilities": capabilities,
+        "capability_evidence": capability_evidence,
         "coverage": {
             "understanding_level": "L1",
             "static_scan": True,
@@ -221,7 +314,8 @@ def main() -> int:
         },
         "limitations": [
             "Static repository scan only; runtime graph and effective parameters were not observed.",
-            "Regex and file-layout detection are indexes, not proof of runtime behavior.",
+            "Evidence status 'observed' means a static source/config signal was found; it is not a runtime measurement.",
+            "Dependency-only and generic keyword matches remain candidates and do not set capability booleans.",
             "Build, bag, hardware, timing, QoS compatibility, and regression results were not verified.",
         ],
     }

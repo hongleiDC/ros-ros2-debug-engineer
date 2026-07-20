@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 import re
 
-from jsonschema import Draft202012Validator, FormatChecker
+try:
+    from jsonschema import Draft202012Validator, FormatChecker
+except ModuleNotFoundError:
+    raise SystemExit("Missing dependency 'jsonschema'. Run: python3 scripts/preflight.py --require knowledge") from None
 import yaml
 
 from goal_utils import contract_hash

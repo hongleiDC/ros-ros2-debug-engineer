@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 import yaml
 
@@ -79,6 +80,7 @@ class SkillTest(unittest.TestCase):
             (package / "src").mkdir(parents=True)
             (package / "launch").mkdir()
             (package / "msg").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
             (package / "package.xml").write_text("""<package format="3">
 <name>demo_pkg</name><version>0.1.0</version><description>x</description>
 <maintainer email="a@b.com">a</maintainer><license>MIT</license>
@@ -94,6 +96,7 @@ class SkillTest(unittest.TestCase):
             )
             (package / "launch" / "demo.launch.py").write_text("# launch", encoding="utf-8")
             (package / "msg" / "Status.msg").write_text("bool ok", encoding="utf-8")
+            (root / ".github" / "workflows" / "ci.yml").write_text("name: ci\n", encoding="utf-8")
             result = self.run_script("inspect_workspace.py", str(root))
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             data = json.loads(result.stdout)
@@ -103,6 +106,25 @@ class SkillTest(unittest.TestCase):
             self.assertTrue(data["capabilities"]["lifecycle"])
             self.assertTrue(data["capabilities"]["callback_groups"])
             self.assertTrue(data["artifacts"]["interfaces"])
+            self.assertIn(".github/workflows/ci.yml", data["artifacts"]["ci"])
+            self.assertFalse(data["capabilities"]["imu"])
+
+    def test_runtime_command_capture_is_memory_bounded(self) -> None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("runtime_snapshot", SCRIPTS / "collect_runtime_snapshot.py")
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        result = module.execute(
+            [sys.executable, "-c", "import sys; sys.stdout.write('x' * 150000); sys.stderr.write('y' * 120000)"],
+            5.0,
+        )
+        self.assertEqual(result["returncode"], 0)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(len(result["stdout"]), module.MAX_OUTPUT)
+        self.assertEqual(len(result["stderr"]), module.MAX_OUTPUT)
 
     def test_runtime_snapshot_gracefully_handles_missing_ros(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,6 +134,37 @@ class SkillTest(unittest.TestCase):
             data = json.loads(result.stdout)
             self.assertEqual(data["ros_version"], "unknown")
             self.assertEqual(data["coverage"]["successful_commands"], 0)
+            self.assertFalse(data["coverage"]["runtime_observed"])
+            self.assertEqual(data["coverage"]["understanding_level"], "L1")
+
+    def test_preflight_has_dependency_free_none_profile(self) -> None:
+        result = self.run_script("preflight.py", "--require", "none", "--format", "json")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        data = json.loads(result.stdout)
+        self.assertTrue(data["ok"])
+        self.assertIn("jsonschema", data["modules"])
+
+    def test_static_capabilities_do_not_promote_dependency_only_signals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "ws"
+            package = root / "src" / "demo_pkg"
+            (package / "src").mkdir(parents=True)
+            (package / "launch").mkdir()
+            (package / "package.xml").write_text(
+                "<package><name>demo_pkg</name><version>0.1.0</version>"
+                "<depend>rclcpp_lifecycle</depend></package>",
+                encoding="utf-8",
+            )
+            (package / "src" / "node.cpp").write_text("// simulation helper\nint main() {}\n", encoding="utf-8")
+            (package / "launch" / "demo.launch.py").write_text("# launch only\n", encoding="utf-8")
+            result = self.run_script("inspect_workspace.py", str(root))
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            data = json.loads(result.stdout)
+            self.assertFalse(data["capabilities"]["lifecycle"])
+            self.assertEqual(data["capability_evidence"]["lifecycle"]["status"], "candidate")
+            self.assertFalse(data["capabilities"]["imu"])
+            self.assertEqual(data["packages"][0]["languages"], ["c++"])
+            self.assertEqual(data["status"], "observed")
 
     def test_update_records_old_new_and_validates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -360,6 +413,10 @@ class SkillTest(unittest.TestCase):
             results.mkdir()
             (results / "trajectory.csv").write_text("t,x,y\n0,0,0\n", encoding="utf-8")
             (results / "run.log").write_text("completed\n", encoding="utf-8")
+            started = self.run_script(
+                "experiment_registry.py", "start", str(knowledge), "EXP-0001",
+            )
+            self.assertEqual(started.returncode, 0, started.stderr + started.stdout)
             finished = self.run_script(
                 "experiment_registry.py", "finish", str(knowledge), "EXP-0001",
                 "--status", "completed", "--outcome", "pass",
@@ -376,6 +433,7 @@ class SkillTest(unittest.TestCase):
             path = (knowledge / "experiments" / "EXP-0001.yaml")
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual(data["status"], "completed")
+            self.assertIsNotNone(data["results"]["run_started_at"])
             self.assertEqual(data["results"]["outcome"], "pass")
             self.assertEqual(data["results"]["metrics"][0]["value"], 0.31)
             self.assertEqual(len(data["results"]["artifacts"][0]["sha256"]), 64)
@@ -387,7 +445,14 @@ class SkillTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             result = self.run_script("package_skill.py", str(ROOT), tmp)
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertTrue((Path(tmp) / "skill.zip").is_file())
+            archive_path = Path(tmp) / "skill.zip"
+            self.assertTrue(archive_path.is_file())
+            with zipfile.ZipFile(archive_path) as archive:
+                names = set(archive.namelist())
+            self.assertNotIn("README.md", names)
+            self.assertFalse(any(name.startswith("tests/") for name in names))
+            self.assertFalse(any(name.startswith(".github/") for name in names))
+            self.assertIn("scripts/preflight.py", names)
 
 
 class ReasoningKnowledgeTest(unittest.TestCase):

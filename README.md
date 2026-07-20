@@ -90,6 +90,7 @@ bag 回放默认使用白名单和隔离环境，避免把控制 topic 回放到
 git clone https://github.com/hongleiDC/ros-ros2-debug-engineer.git
 cd ros-ros2-debug-engineer
 python3 -m pip install -r requirements.txt
+python3 scripts/preflight.py --require knowledge
 python3 -m unittest discover -s tests -v
 python3 scripts/package_skill.py . dist
 ```
@@ -122,10 +123,14 @@ python3 scripts/inspect_workspace.py /path/to/workspace --format yaml
 ### 运行时只读快照
 
 ```bash
-python3 scripts/collect_runtime_snapshot.py --ros-version auto --format yaml
+python3 scripts/collect_runtime_snapshot.py --ros-version auto --profile basic --format yaml
 ```
 
-它只运行有超时的只读命令，不 publish、不 echo 数据、不调用 service/action，也不改变参数。
+`basic` 只做轻量图快照；需要端点 QoS 时使用 `--profile communication`，需要 node 详情和参数 dump 时使用 `--profile full`。部分命令成功不会自动宣称达到 L3。工具不 publish、不 echo 数据、不调用 service/action，也不改变参数。
+
+## 发行版兼容
+
+命令和补丁必须先识别 `ROS_VERSION`、`ROS_DISTRO`、操作系统和 RMW。Skill 包含 Lyrical Luth、旧版 ROS 2、Windows、ROS 1 Noetic EOL 与 `ros1_bridge` 限制的分流规则；Rolling API 不会被默认当成所有稳定发行版都支持。
 
 ## 项目知识库
 

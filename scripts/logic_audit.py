@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from goal_utils import atomic_write_yaml
+from lock_utils import file_lock
 from schema_utils import load_yaml, validate_knowledge, validate_schema
 
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "references" / "schemas"
@@ -25,10 +27,13 @@ def now() -> str:
 def git_commit(workspace: Path | None) -> str | None:
     if workspace is None:
         return None
-    result = subprocess.run(
-        ["git", "-C", str(workspace), "rev-parse", "HEAD"],
-        text=True, capture_output=True, check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "HEAD"],
+            text=True, capture_output=True, check=False, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -411,9 +416,10 @@ def main() -> int:
         folder = knowledge / "audits"
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / f"{args.audit_id}.yaml"
-        if target.exists():
-            raise SystemExit(f"refusing to overwrite {target}")
-        target.write_text(yaml.safe_dump(report, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        with file_lock(folder / ".logic-audit.lock"):
+            if target.exists():
+                raise SystemExit(f"refusing to overwrite {target}")
+            atomic_write_yaml(target, report)
     if args.format == "json":
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

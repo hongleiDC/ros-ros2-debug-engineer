@@ -6,7 +6,6 @@ import argparse
 import base64
 import copy
 from datetime import datetime, timezone
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -16,6 +15,7 @@ from typing import Any
 import yaml
 
 from schema_utils import validate_knowledge
+from lock_utils import file_lock
 
 ALLOWED = {"candidate", "measured", "verified", "deprecated"}
 JOURNAL_NAME = ".knowledge-transaction.json"
@@ -125,8 +125,7 @@ def main() -> int:
         raise SystemExit("key must not be empty")
 
     lock_path = knowledge / LOCK_NAME
-    with lock_path.open("a+", encoding="utf-8") as lock_handle:
-        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+    with file_lock(lock_path):
         recovered = recover_if_needed(knowledge)
         if recovered:
             print("recovered unfinished knowledge transaction", file=os.sys.stderr)

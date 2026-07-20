@@ -14,6 +14,8 @@ import yaml
 
 MAX_BYTES = 25 * 1024 * 1024
 EXCLUDED = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", "dist", ".venv", "venv"}
+BUNDLE_EXCLUDED_ROOTS = {".github", "tests"}
+BUNDLE_EXCLUDED_FILES = {"README.md", "LICENSE", "LICENSE.md"}
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
 
@@ -57,9 +59,12 @@ def validate_agent(root: Path, errors: list[str]) -> None:
     if not isinstance(interface, dict):
         errors.append("agents/openai.yaml must contain interface mapping")
         return
-    for key in ("display_name", "short_description"):
+    for key in ("display_name", "short_description", "default_prompt"):
         if not isinstance(interface.get(key), str) or not interface[key].strip():
             errors.append(f"agents/openai.yaml missing interface.{key}")
+    default_prompt = interface.get("default_prompt", "")
+    if isinstance(default_prompt, str) and "$ros-ros2-debug-engineer" not in default_prompt:
+        errors.append("agents/openai.yaml interface.default_prompt must mention $ros-ros2-debug-engineer")
 
 
 def validate_links(root: Path, errors: list[str]) -> None:
@@ -102,6 +107,8 @@ def files(root: Path) -> Iterable[tuple[Path, Path]]:
             continue
         relative = path.relative_to(root)
         if any(part in EXCLUDED for part in relative.parts):
+            continue
+        if relative.parts[0] in BUNDLE_EXCLUDED_ROOTS or relative.as_posix() in BUNDLE_EXCLUDED_FILES:
             continue
         if path.name in {"skill.zip", ".DS_Store"} or path.suffix == ".pyc":
             continue

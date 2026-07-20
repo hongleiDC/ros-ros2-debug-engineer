@@ -1,12 +1,8 @@
 interface:
-  display_name: ROS/ROS2 调试工程师
-  short_description: 用目标、公式变量映射和可审计推理链严格开发与调试 ROS
-  icon_small: assets/icon.svg
-  icon_large: assets/icon.svg
+  display_name: "ROS/ROS2 调试工程师"
+  short_description: "用可追溯证据开发、迁移和调试 ROS 工程"
+  icon_small: "./assets/icon.svg"
+  icon_large: "./assets/icon.svg"
+  default_prompt: "Use $ros-ros2-debug-engineer to diagnose this ROS project with an explicit evidence boundary and a distro-aware verification plan."
 policy:
-  products:
-  - chatgpt
-  - codex
-  - api
-  - atlas
   allow_implicit_invocation: true

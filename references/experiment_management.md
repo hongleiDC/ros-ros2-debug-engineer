@@ -1,5 +1,16 @@
 # 实验登记、去重与复用
 
+## 目录
+
+- [核心原则](#核心原则)
+- [实验前](#实验前)
+- [允许重复的例外](#允许重复的例外)
+- [实验中](#实验中)
+- [实验后](#实验后)
+- [与回归测试的关系](#与回归测试的关系)
+- [命令](#命令)
+- [与推理和公式知识库联动](#与推理和公式知识库联动)
+
 ## 核心原则
 
 任何会改变参数、代码、依赖、设备、数据、时间配置、外参、QoS、RMW、launch 或运行顺序的验证，都视为一次实验。实验前登记，实验后立即补全结果。不能只在聊天中描述后忘记写入。
@@ -18,7 +29,7 @@
 8. 记录输入：bag、数据集、launch、参数、配置、设备、标定及其 ID 或 SHA-256。
 9. 记录完整命令、步骤、预期现象、指标、阈值和安全限制；指标名称必须与公式中的物理量、单位和代码字段一致。
 10. 使用 `scripts/experiment_registry.py create` 生成指纹并检查重复。
-11. 若存在完全相同指纹，默认停止，不重复运行。
+11. 若存在完全相同指纹，默认停止，不重复运行；语义指纹相同但 commit/主机不同的记录列入 `similar_match_ids`，人工确认是否有新增区分度。
 
 ## 允许重复的例外
 
@@ -80,7 +91,14 @@ python3 scripts/experiment_registry.py create \
   --metric "ate_rmse_m:lower:m"
 ```
 
-补全结果：
+执行实际命令前将计划原子切换为 `running` 并记录开始时间：
+
+```bash
+python3 scripts/experiment_registry.py start \
+  /path/to/project_knowledge EXP-0001
+```
+
+只有 `running` 状态可以补全结果：
 
 ```bash
 python3 scripts/experiment_registry.py finish \
@@ -100,4 +118,3 @@ python3 scripts/experiment_registry.py finish \
 ## 与推理和公式知识库联动
 
 涉及数学模型或公式变量的实验必须记录相关 `FORM-*`、`MAP-*` 和 `REAS-*`。实验前审计这些记录与当前 commit 一致；实验后把中间量、单位、公式版本、推理步骤和结果证据写回知识库。若实验发现公式假设、单位、frame、方向或变量映射错误，必须将旧结论降级或弃用，不能只修改实验摘要。
-
