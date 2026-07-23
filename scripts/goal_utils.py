@@ -28,11 +28,14 @@ def goal_records(state_root: Path) -> list[tuple[Path, dict[str, Any]]]:
     result: list[tuple[Path, dict[str, Any]]] = []
     if not folder.is_dir():
         return result
+    errors: list[str] = []
     for path in sorted(folder.glob("*.yaml")) + sorted(folder.glob("*.yml")):
         try:
             result.append((path, load_goal(path)))
-        except Exception:
-            continue
+        except Exception as exc:
+            errors.append(f"{path.name}: {exc}")
+    if errors:
+        raise ValueError("invalid goal record(s): " + "; ".join(errors))
     return result
 
 

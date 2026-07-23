@@ -79,7 +79,15 @@ def validate_links(root: Path, errors: list[str]) -> None:
             if target.startswith(("http://", "https://", "#", "mailto:")):
                 continue
             clean = target.split("#", 1)[0]
-            if clean and not (markdown.parent / clean).resolve().exists():
+            if not clean:
+                continue
+            resolved = (markdown.parent / clean).resolve()
+            try:
+                resolved.relative_to(root.resolve())
+            except ValueError:
+                errors.append(f"{markdown.relative_to(root)}: linked resource escapes skill root: {target}")
+                continue
+            if not resolved.exists():
                 errors.append(f"{markdown.relative_to(root)}: missing linked resource {target}")
 
 
