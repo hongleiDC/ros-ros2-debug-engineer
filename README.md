@@ -8,124 +8,89 @@
 
 面向 ChatGPT 与 Codex 的 ROS 1 / ROS 2 架构设计、开发、迁移和调试 Skill。
 
-v2 的核心目标只有两个：
+v2.1 坚持两个优先级：
 
-1. **设计真正可实施的 ROS 系统架构**；
-2. **以尽量少的 Token 和最小代码面定位根因**。
+1. **架构设计必须具体、量化、可实施**；
+2. **简单问题必须走最短路径，避免无意义 Token 消耗**。
 
-它不再把目标契约、实验登记和公式审计作为普通调试的默认流程。重型追溯能力仍然保留，但只在高风险或用户明确要求的 `audit` 模式启用。
+默认关闭隐式调用。建议显式使用 `$ros-ros2-debug-engineer`，避免普通 ROS 概念问答自动加载完整 Skill。
 
-## 三种模式
+## 调试模式
 
-### `debug`：默认快速调试
+### `micro`
 
-适用于构建失败、节点启动、topic、QoS、TF、时间戳、参数、lifecycle、executor、性能和算法异常。
+单个编译错误、明显参数问题、单文件逻辑或概念澄清。直接解决，不加载参考文档，不建立假设表和知识库。
 
-工作方式：
+### `standard`
 
-```text
-最小代码阅读
-→ 最多三个活动假设
-→ 高信息增益检查
-→ 最小补丁
-→ 同条件验证
-→ 停止
-```
+跨文件、launch、运行图或复现问题。读取 [快速调试](references/fast_debugging.md)，最多保留三个活动假设，用最小检查定位根因。
 
-普通问题默认只输出：根因、证据、修改、验证、剩余风险。
+### `domain`
 
-### `architect`：系统架构设计
+证据已经指向 QoS、TF、时间、rosbag、SLAM 等特定领域。在 `standard` 基础上最多再加载一个领域参考文件。
 
-适用于从零设计、系统重构、package/node/component 划分、接口和 QoS 设计、TF/时间体系、并发与生命周期设计、多机部署和性能架构。
+默认交付：根因、证据、修改、验证、剩余风险。
 
-必须交付具体的：
+## 架构模式
 
-- 系统边界、数据流、控制流和诊断流；
+根据问题规模选择：
+
+| 规模 | 适用范围 | 默认交付 |
+|---|---|---|
+| `component` | 单节点、组件或算法封装 | 职责、接口、线程、错误处理、测试 |
+| `subsystem` | 定位、感知、建图、控制 | 结构、数据流、接口、QoS、TF/时间、恢复 |
+| `system` | 整机、多机或分布式系统 | 资源预算、部署、安全、运维、迁移和演进 |
+
+架构设计包括：
+
 - package、算法核心、ROS 适配层、node/component 边界；
-- topic/service/action/message 接口契约；
-- QoS、TF、时间、executor、callback group 和队列设计；
-- lifecycle、故障隔离、降级、恢复、可观测性；
-- 测试、部署和分阶段实施方案。
+- topic/service/action 接口和唯一所有权；
+- QoS、TF、时间、executor、callback group 和 lifecycle；
+- 数据大小、频率、带宽和关键路径延迟预算；
+- 故障隔离、降级、恢复和可观测性；
+- Greenfield 实施或 Brownfield 分阶段迁移与回滚。
 
-### `audit`：按需审计
-
-只用于控制、安全关键硬件、标定、状态估计、正式验收、长期多人协作，或用户明确要求完整追溯的任务。
-
-该模式可以启用：
-
-- GOAL 目标契约；
-- 实验登记与去重；
-- FORM/MAP/REAS/AUD；
-- 公式、变量、单位、frame、时间和证据审计。
-
-## Token 节省策略
-
-- 不默认扫描整个仓库；
-- 初始通常只读一个构建文件、一个 launch/配置文件和二至四个核心源码；
-- 每轮最多保留三个假设；
-- 不重复粘贴背景和工具输出；
-- 普通调试不创建知识库记录；
-- 找到根因并验证后立即停止扩大范围；
-- 只有架构任务才输出完整系统设计。
-
-## 架构能力
-
-架构流程从目标与约束开始，而不是先堆节点：
-
-```text
-目标与非目标
-→ 数据/控制/配置/诊断流
-→ package 与算法/ROS 边界
-→ node/component 与故障域
-→ 接口契约与 QoS
-→ TF 与时间体系
-→ 并发、实时性与生命周期
-→ 故障恢复与可观测性
-→ 测试、部署和演进
-```
-
-详细方法见：
+详细方法：
 
 - [系统架构设计](references/architecture_design.md)
-- [架构模式与取舍](references/architecture_patterns.md)
+- [架构决策模式](references/architecture_patterns.md)
 
-## 快速调试能力
+## 审计模式
 
-调试按最早失败层级收敛：
+`audit` 由风险和请求动作触发，不由“标定、状态估计”等领域名称自动触发。
 
-```text
-构建
-→ launch/参数
-→ graph/lifecycle
-→ 消息/QoS/DDS
-→ TF/时间
-→ executor/资源
-→ 数据/算法
-```
+普通解释、只读检查和局部公式核对仍使用 `debug`。只有用户明确要求完整追溯，或准备修改/部署高风险逻辑且普通验证不足时，才启用 GOAL、实验登记、FORM/MAP/REAS/AUD 和逻辑审计。
 
-每个命令必须能够确认或排除一个活动假设。详细流程见 [ROS 快速调试](references/fast_debugging.md)。
+## Token 策略
+
+- 不默认扫描整个仓库；
+- `micro` 不加载参考文件；
+- 初始通常只读一个构建文件、一个配置文件和二至四个核心源码；
+- 每轮最多三个假设，每个命令必须有信息增益；
+- 不重复背景、目标和工具输出；
+- 最多询问一个会改变方案的关键问题；
+- 找到根因或完成架构决策后立即停止。
 
 ## 使用示例
 
-### 设计架构
+### 简单问题
 
 ```text
-使用 $ros-ros2-debug-engineer 为双激光雷达、IMU 和双天线 GNSS 的 ROS 2 定位系统设计架构。
-给出 package/node/component、接口、QoS、TF、时间同步、executor、lifecycle、故障恢复和测试部署方案。
+使用 $ros-ros2-debug-engineer 解释这个 CMake 错误并给出最小修复。按 micro 调试，不扫描整个仓库。
 ```
 
-### 快速调试
+### 子系统架构
 
 ```text
-使用 $ros-ros2-debug-engineer 检查为什么发布端和订阅端都存在，但订阅回调没有数据。
-限制为三个假设，先做最小区分检查，不建立审计知识库。
+使用 $ros-ros2-debug-engineer 为 LiDAR-IMU-GNSS 定位子系统设计架构。
+给出数据流、package/node/component、接口、QoS、TF/时间、延迟预算、故障恢复和迁移计划。
 ```
 
-### 审计关键算法
+### 高风险审计
 
 ```text
-使用 $ros-ros2-debug-engineer 审计 IMU 时间补偿和外参变换实现。
-需要公式、变量、单位、frame、方向、代码位置和回归证据。
+使用 $ros-ros2-debug-engineer 审计即将部署的控制器时间补偿逻辑。
+需要公式、变量、单位、frame、代码位置、实验和回归证据。
 ```
 
 ## 工具
@@ -133,12 +98,12 @@ v2 的核心目标只有两个：
 | 工具 | 用途 | 默认使用 |
 |---|---|---|
 | `preflight.py` | 检查 Python、Git 和 ROS CLI | 调用相关工具前 |
-| `inspect_workspace.py` | 生成静态项目模型 | 架构评审或跨 package 问题 |
-| `collect_runtime_snapshot.py` | 收集运行图、QoS 和参数 | 运行时证据确有必要时 |
-| `goal_guard.py` | 目标契约与关键节点记录 | 仅 audit |
-| `experiment_registry.py` | 可重复实验与去重 | 仅 audit/复杂实验 |
+| `inspect_workspace.py` | 静态项目模型 | 架构评审或跨 package 问题 |
+| `collect_runtime_snapshot.py` | 运行图、QoS 和参数证据 | 静态证据不足时 |
+| `goal_guard.py` | 目标契约 | 仅 audit |
+| `experiment_registry.py` | 实验登记与去重 | 仅 audit/复杂实验 |
 | `logic_audit.py` | 公式、变量和推理审计 | 仅 audit |
-| `package_skill.py` | 验证并生成 `skill.zip` | 发布前 |
+| `package_skill.py` | 校验并生成 `skill.zip` | 发布前 |
 
 ## 验证和打包
 
@@ -155,7 +120,7 @@ python3 scripts/package_skill.py . dist
 
 ## 安全边界
 
-默认只读。修改、持久化、提交、推送、bag 回放和真实硬件操作必须有用户明确授权。不要把密钥、证书、设备标识、未脱敏现场日志、地图、点云或生产网络信息提交到公开 Issue。
+默认只读。修改、持久化、提交、推送、bag 回放和真实硬件操作必须有用户明确授权。不要提交密钥、设备标识或未脱敏的现场数据。
 
 详见 [SECURITY.md](SECURITY.md) 和 [安全与权限](references/safety_and_permissions.md)。
 
