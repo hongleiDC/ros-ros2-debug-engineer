@@ -3,9 +3,9 @@ interface:
   short_description: "低 Token 设计优秀 ROS 架构并快速定位根因"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
-  default_prompt: "Use $ros-ros2-debug-engineer to choose architecture or debugging mode, inspect only the smallest relevant code surface, and deliver a concrete ROS design or verified root cause without unnecessary process overhead."
+  default_prompt: "Use $ros-ros2-debug-engineer to choose the smallest suitable architecture or debugging scope, inspect only decisive evidence, and deliver a concrete design or verified root cause without unnecessary process overhead."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false
   products:
     - chatgpt
     - codex
