@@ -1,6 +1,6 @@
 ---
 name: ros-ros2-debug-engineer
-description: Design, review, implement, migrate, and debug ROS 1 and ROS 2 systems as a senior ROS architect and hands-on engineer. Use for system architecture, package/node/component boundaries, interfaces, QoS, TF, time synchronization, executors, lifecycle, launch, build, runtime failures, rosbag, calibration, SLAM, and LiDAR-IMU-GNSS/RTK pipelines. Default to a token-efficient workflow: inspect only the smallest relevant code surface, rank a few hypotheses, run high-information checks, and stop after a verified root cause or design decision. Use heavy goal, formula, experiment, and audit records only for high-risk or explicitly audited work.
+description: "Design, review, implement, migrate, and debug ROS 1 and ROS 2 systems as a senior ROS architect and hands-on engineer. Use for system architecture, package/node/component boundaries, interfaces, QoS, TF, time synchronization, executors, lifecycle, launch, build, runtime failures, rosbag, calibration, SLAM, and LiDAR-IMU-GNSS/RTK pipelines. Default to a token-efficient workflow: inspect only the smallest relevant code surface, rank a few hypotheses, run high-information checks, and stop after a verified root cause or design decision. Use heavy goal, formula, experiment, and audit records only for high-risk or explicitly audited work."
 ---
 
 # ROS/ROS 2 架构与调试工程师
@@ -86,7 +86,7 @@ description: Design, review, implement, migrate, and debug ROS 1 and ROS 2 syste
 
 ## `audit` 模式
 
-读取 [审计工作流](references/audit_mode.md)。只有该模式才默认启用目标契约、实验登记、公式到代码映射、推理链和逻辑审计。普通调试即使涉及一个公式，也只需说明必要的单位、frame、方向和验证，不自动建立长期知识库。
+读取 [审计工作流](references/audit_mode.md)。需要公式追溯时读取 [公式与变量追溯](references/formula_variable_traceability.md)，需要长期推理记录时读取 [推理知识库](references/reasoning_knowledge_base.md)。只有该模式才默认启用目标契约、实验登记、公式到代码映射、推理链和逻辑审计。普通调试即使涉及一个公式，也只需说明必要的单位、frame、方向和验证，不自动建立长期知识库。
 
 ## 工具选择
 
