@@ -1,0 +1,51 @@
+schema_version: 1
+purpose: Manual behavior regression cases for architecture quality and token efficiency.
+cases:
+  - id: micro-cmake-error
+    prompt: Explain this single CMake target_link_libraries error and provide the smallest fix.
+    expected_mode: debug
+    expected_scale: micro
+    max_references: 0
+    max_hypotheses: 1
+    forbidden: [repository-wide scan, GOAL, FORM, MAP, REAS, AUD]
+    required: [root cause, minimal patch, focused validation]
+  - id: micro-heading-concept
+    prompt: What does dual-antenna heading offset mean in this parameter?
+    expected_mode: debug
+    expected_scale: micro
+    max_references: 0
+    max_hypotheses: 1
+    forbidden: [audit mode, experiment registry, knowledge base initialization]
+    required: [plain explanation, frame or sign caveat]
+  - id: standard-no-messages
+    prompt: The ROS 2 publisher and subscriber both exist but the callback receives no messages.
+    expected_mode: debug
+    expected_scale: standard
+    max_references: 1
+    max_hypotheses: 3
+    forbidden: [full repository scan, unrelated refactor]
+    required: [message type, endpoint QoS, namespace or remap]
+  - id: subsystem-localization
+    prompt: Design a LiDAR-IMU-GNSS localization subsystem for ROS 2.
+    expected_mode: architect
+    expected_scale: subsystem
+    max_references: 2
+    max_hypotheses: 0
+    forbidden: [generic node list without tradeoffs]
+    required: [data flow, package structure, interface table, TF ownership, time source, failure recovery]
+  - id: system-fleet
+    prompt: Redesign an existing multi-robot ROS 2 system without breaking deployed interfaces.
+    expected_mode: architect
+    expected_scale: system
+    max_references: 2
+    max_hypotheses: 0
+    forbidden: [big-bang migration]
+    required: [resource budget, deployment topology, compatibility boundary, migration stages, rollback points]
+  - id: audit-controller-deployment
+    prompt: Audit and modify a controller timing compensation implementation before hardware deployment.
+    expected_mode: audit
+    expected_scale: high-risk-change
+    max_references: 4
+    max_hypotheses: 3
+    forbidden: [claiming safety from static review alone]
+    required: [success criteria, formula mapping, experiment evidence, rollback]
