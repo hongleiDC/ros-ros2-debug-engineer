@@ -121,7 +121,7 @@ def files(root: Path) -> Iterable[tuple[Path, Path]]:
             continue
         if relative.parts[0] in BUNDLE_EXCLUDED_ROOTS or relative.as_posix() in BUNDLE_EXCLUDED_FILES:
             continue
-        if path.name in {"skill.zip", ".DS_Store"} or path.suffix == ".pyc":
+        if path.name in {"skill.zip", ".DS_Store"} or path.suffix in {".pyc", ".log"}:
             continue
         yield path, relative
 
