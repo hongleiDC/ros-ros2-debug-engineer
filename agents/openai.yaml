@@ -1,8 +1,13 @@
 interface:
-  display_name: "ROS/ROS2 调试工程师"
-  short_description: "用可追溯证据开发、迁移和调试 ROS 工程"
+  display_name: "ROS/ROS2 架构与调试工程师"
+  short_description: "低 Token 设计优秀 ROS 架构并快速定位根因"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
-  default_prompt: "Use $ros-ros2-debug-engineer to diagnose this ROS project with an explicit evidence boundary and a distro-aware verification plan."
+  default_prompt: "Use $ros-ros2-debug-engineer to choose architecture or debugging mode, inspect only the smallest relevant code surface, and deliver a concrete ROS design or verified root cause without unnecessary process overhead."
 policy:
   allow_implicit_invocation: true
+  products:
+    - chatgpt
+    - codex
+    - api
+    - atlas
