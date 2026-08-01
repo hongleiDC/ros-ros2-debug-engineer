@@ -30,7 +30,7 @@ class V2WorkflowTest(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "agents" / "openai.yaml").write_text(
-                "interface:\n  display_name: Demo\n  short_description: Demo\n  default_prompt: Use $ros-ros2-systems-engineer.\n",
+                "interface:\n  display_name: Demo\n  short_description: Demo\n  default_prompt: Use $demo.\n",
                 encoding="utf-8",
             )
             (root / "run.log").write_text("temporary", encoding="utf-8")
@@ -40,7 +40,7 @@ class V2WorkflowTest(unittest.TestCase):
                 text=True,
                 timeout=90,
             )
-            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             with zipfile.ZipFile(Path(tmp) / "dist" / "skill.zip") as archive:
                 self.assertNotIn("run.log", archive.namelist())
 
