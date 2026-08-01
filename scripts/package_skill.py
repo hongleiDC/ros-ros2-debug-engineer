@@ -20,35 +20,47 @@ BUNDLE_EXCLUDED_FILES = {
     "CODE_OF_CONDUCT.md",
 }
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
-def validate_frontmatter(root: Path, errors: list[str]) -> None:
+def load_frontmatter(root: Path, errors: list[str]) -> dict[str, object] | None:
     skill = root / "SKILL.md"
     if not skill.is_file():
         errors.append("missing SKILL.md")
-        return
+        return None
     text = skill.read_text(encoding="utf-8")
-    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    match = FRONTMATTER_RE.match(text)
     if not match:
         errors.append("SKILL.md must start with YAML frontmatter")
-        return
+        return None
     try:
         frontmatter = yaml.safe_load(match.group(1))
     except yaml.YAMLError as exc:
         errors.append(f"invalid SKILL.md frontmatter: {exc}")
-        return
+        return None
     if not isinstance(frontmatter, dict) or set(frontmatter) != {"name", "description"}:
         errors.append("frontmatter must contain only name and description")
-        return
+        return None
+    return frontmatter
+
+
+def validate_frontmatter(root: Path, errors: list[str]) -> str | None:
+    frontmatter = load_frontmatter(root, errors)
+    if frontmatter is None:
+        return None
     name = frontmatter.get("name")
     description = frontmatter.get("description")
     if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
         errors.append("name must be lowercase kebab-case")
+        valid_name = None
+    else:
+        valid_name = name
     if not isinstance(description, str) or len(description.strip()) < 40:
         errors.append("description must clearly describe capability and triggering context")
+    return valid_name
 
 
-def validate_agent(root: Path, errors: list[str]) -> None:
+def validate_agent(root: Path, skill_name: str | None, errors: list[str]) -> None:
     path = root / "agents" / "openai.yaml"
     if not path.is_file():
         errors.append("missing agents/openai.yaml")
@@ -66,8 +78,10 @@ def validate_agent(root: Path, errors: list[str]) -> None:
         if not isinstance(interface.get(key), str) or not interface[key].strip():
             errors.append(f"agents/openai.yaml missing interface.{key}")
     default_prompt = interface.get("default_prompt", "")
-    if isinstance(default_prompt, str) and "$ros-ros2-debug-engineer" not in default_prompt:
-        errors.append("agents/openai.yaml interface.default_prompt must mention $ros-ros2-debug-engineer")
+    if skill_name and isinstance(default_prompt, str) and f"${skill_name}" not in default_prompt:
+        errors.append(
+            f"agents/openai.yaml interface.default_prompt must mention ${skill_name}"
+        )
 
 
 def validate_links(root: Path, errors: list[str]) -> None:
@@ -102,8 +116,8 @@ def validate_scripts(root: Path, errors: list[str]) -> None:
 
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
-    validate_frontmatter(root, errors)
-    validate_agent(root, errors)
+    skill_name = validate_frontmatter(root, errors)
+    validate_agent(root, skill_name, errors)
     validate_links(root, errors)
     validate_scripts(root, errors)
     for path in root.rglob("*"):
