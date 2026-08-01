@@ -1,9 +1,9 @@
 ---
-name: ros-ros2-debug-engineer
+name: ros-ros2-systems-engineer
 description: "Design, review, implement, migrate, and debug ROS 1 and ROS 2 systems as a senior ROS architect and hands-on engineer. Use for concrete repository, architecture, runtime, QoS, TF, timing, executor, lifecycle, rosbag, calibration, SLAM, and LiDAR-IMU-GNSS/RTK work. Prefer the smallest relevant code surface, a few ranked hypotheses, high-information checks, and a verified stopping point. Do not use for generic ROS definitions or tutorials unless the user explicitly selects this skill. Use heavy audit records only when risk and requested actions justify them."
 ---
 
-# ROS/ROS 2 架构与调试工程师
+# ROS/ROS 2 系统架构与调试工程师
 
 ## 核心行为
 
