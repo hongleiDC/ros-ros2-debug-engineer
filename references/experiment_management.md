@@ -3,10 +3,12 @@
 ## 目录
 
 - [核心原则](#核心原则)
+- [EXP 与 RUN 分层](#exp-与-run-分层)
 - [实验前](#实验前)
 - [允许重复的例外](#允许重复的例外)
 - [实验中](#实验中)
 - [实验后](#实验后)
+- [与结果闭环联动](#与结果闭环联动)
 - [与回归测试的关系](#与回归测试的关系)
 - [命令](#命令)
 - [与推理和公式知识库联动](#与推理和公式知识库联动)
@@ -16,6 +18,17 @@
 任何会改变参数、代码、依赖、设备、数据、时间配置、外参、QoS、RMW、launch 或运行顺序的验证，都视为一次实验。实验前登记，实验后立即补全结果。不能只在聊天中描述后忘记写入。
 
 “实验标题相似”不能作为去重依据。使用稳定实验指纹比较实际条件：主线 commit、实验 commit、脏工作区差异、环境、依赖快照、输入文件哈希、设备与标定、变量、命令和执行顺序。
+
+## EXP 与 RUN 分层
+
+把实验意图和一次具体执行分开：
+
+- `EXP-*` 保存目标、假设、唯一主要变量、成功判据、父实验和比较关系；
+- `RUN-*` 保存某次实际执行的 commit、bag、配置、命令、指标、series、plots、logs 和 report。
+
+一个 EXP 可以有多个 RUN。不要为了每个 bag 或 repeat 复制一个新 EXP；也不要把不同 bag、不同配置或 baseline/candidate 的输出混在同一个 RUN。
+
+产生连续数值结果时读取 [结果管理](result_management.md)。
 
 ## 实验前
 
@@ -30,6 +43,7 @@
 9. 记录完整命令、步骤、预期现象、指标、阈值和安全限制；指标名称必须与公式中的物理量、单位和代码字段一致。
 10. 使用 `scripts/experiment_registry.py create` 生成指纹并检查重复。
 11. 若存在完全相同指纹，默认停止，不重复运行；语义指纹相同但 commit/主机不同的记录列入 `similar_match_ids`，人工确认是否有新增区分度。
+12. 对 bag/算法/标定/状态估计/性能等数值实验，在实际长时间运行前创建独立 `RUN-*` Result Bundle；普通 micro/debug 不创建。
 
 ## 允许重复的例外
 
@@ -45,28 +59,43 @@
 
 ## 实验中
 
-- 按记录的命令和顺序执行；临时改变条件时先更新记录或创建新实验。
+- 按记录的命令和顺序执行；临时改变条件时先更新记录或创建新实验/RUN。
 - 每个计算结果保留代入值、单位、公式编号和中间量，禁止只记录最终数值。
 - 不在同一个实验中同时改变多个无法分离的主要变量。
-- 记录开始时间、异常、退出码、日志与产物路径。
-- 若发现条件与计划不一致，将状态标为 `aborted` 或创建新的 EXP 记录，不伪装为原计划结果。
+- 把 stdout/stderr 写入 RUN 的 `logs/`，把轨迹、误差和连续诊断写入 `series/`；不要在 `reports/` 顶层制造临时文件。
+- 记录开始时间、异常、退出码和必要 artifact 路径。
+- 若发现条件与计划不一致，将状态标为 `aborted` 或创建新的 RUN/EXP，不伪装为原计划结果。
 
 ## 实验后
 
-使用 `scripts/experiment_registry.py finish` 写入：
+先完成 Result Bundle，再使用 `scripts/experiment_registry.py finish` 写入：
 
 - pass、fail、mixed 或 error；
-- 指标值、单位及相对基线比较；
-- 日志、轨迹、地图、报告等产物及 SHA-256；
+- 关键指标值、单位及相对基线比较；
+- 整个 RUN bundle 路径和必要 SHA-256，而不是逐个登记几十个 CSV；
 - 观察结果、失败信息和异常；
 - 假设 supported、rejected 或 inconclusive；
 - 可复用结论、下一步和不应再重复的条件。
 
-完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP，并通过 parent/compare-to 建立关系。实验完成后立即创建 `goal_guard.py checkpoint --trigger experiment`，把结果是否推进成功判据写回目标进度；实验失败不能让 Agent 自动改换主目标。
+完成记录不得原地改成另一套实验条件。条件变化时创建新 EXP/RUN，并通过 parent/compare-to 或 baseline_run 建立关系。实验完成后立即创建 `goal_guard.py checkpoint --trigger experiment`，把结果是否推进成功判据写回目标进度；实验失败不能让 Agent 自动改换主目标。
+
+## 与结果闭环联动
+
+对适用的数值实验执行以下最小闭环：
+
+1. 创建 `RUN-*` 并保存 manifest；
+2. 保存最小必要 series/logs；
+3. 把正式标量写入 `metrics.json`；
+4. 按 [结果可视化](result_visualization.md) 生成少量关键图；
+5. baseline/candidate 生成 `delta_metrics.json`；
+6. 在 `report.md` 先写决策，再引用指标和图；
+7. 正式 experiment/audit 执行 `result_bundle.py validate RUN_DIR --closure`。
+
+如果 closure 失败，不把该 RUN 描述为 verified。若图形或连续数值不适用于本实验，在 report 明确例外。
 
 ## 与回归测试的关系
 
-实验用于探索和比较，回归测试用于长期防止已知问题复发。当某次实验得到稳定、可重复且有明确判据的结果时，将其转化为 `regression_tests/` 记录，并引用 `experiment_ids`。不要把一次偶然成功直接当作 verified 回归。
+实验用于探索和比较，回归测试用于长期防止已知问题复发。当某次实验得到稳定、可重复且有明确判据的结果时，将其转化为 `regression_tests/` 记录，并引用 `experiment_ids` 和代表性 `run_id`。不要把一次偶然成功直接当作 verified 回归。
 
 ## 命令
 
@@ -98,7 +127,19 @@ python3 scripts/experiment_registry.py start \
   /path/to/project_knowledge EXP-0001
 ```
 
-只有 `running` 状态可以补全结果：
+创建本次运行结果包：
+
+```bash
+python3 scripts/result_bundle.py init \
+  /path/to/reports EXP-0001 \
+  --label bag04-offset-3ms \
+  --workspace /path/to/repository \
+  --dataset-file data/run04.mcap \
+  --config-file config/slam.yaml \
+  --command "ros2 launch my_pkg replay.launch.py bag:=data/run04.mcap"
+```
+
+只有 `running` 状态可以补全实验结果：
 
 ```bash
 python3 scripts/experiment_registry.py finish \
@@ -108,7 +149,7 @@ python3 scripts/experiment_registry.py finish \
   --summary "ATE decreased from 0.42 m to 0.31 m" \
   --metric "ate_rmse_m=0.31:m:baseline 0.42 m" \
   --observation "No timestamp rollback was observed" \
-  --artifact results/exp-0001/trajectory.csv:"trajectory output" \
+  --artifact reports/EXP-0001/RUN-...:"reproducible result bundle" \
   --verdict supported \
   --confidence high \
   --lesson "The offset sign is sensor-to-host positive" \

@@ -1,5 +1,5 @@
 schema_version: 1
-purpose: Manual behavior regression cases for architecture quality and token efficiency.
+purpose: Manual behavior regression cases for architecture quality, token efficiency, and evidence closure.
 cases:
   - id: micro-cmake-error
     prompt: Explain this single CMake target_link_libraries error and provide the smallest fix.
@@ -7,7 +7,7 @@ cases:
     expected_scale: micro
     max_references: 0
     max_hypotheses: 1
-    forbidden: [repository-wide scan, GOAL, FORM, MAP, REAS, AUD]
+    forbidden: [repository-wide scan, GOAL, FORM, MAP, REAS, AUD, result bundle]
     required: [root cause, minimal patch, focused validation]
   - id: micro-heading-concept
     prompt: What does dual-antenna heading offset mean in this parameter?
@@ -15,7 +15,7 @@ cases:
     expected_scale: micro
     max_references: 0
     max_hypotheses: 1
-    forbidden: [audit mode, experiment registry, knowledge base initialization]
+    forbidden: [audit mode, experiment registry, knowledge base initialization, result bundle]
     required: [plain explanation, frame or sign caveat]
   - id: standard-no-messages
     prompt: The ROS 2 publisher and subscriber both exist but the callback receives no messages.
@@ -25,6 +25,14 @@ cases:
     max_hypotheses: 3
     forbidden: [full repository scan, unrelated refactor]
     required: [message type, endpoint QoS, namespace or remap]
+  - id: runtime-ab-result-bundle
+    prompt: Compare baseline and candidate localization configs on the same bag, save the results cleanly, plot the important errors, and tell me whether the candidate should replace the baseline.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 3
+    max_hypotheses: 3
+    forbidden: [scattered top-level temp files, generic dashboard platform, dozens of plots]
+    required: [RUN result bundle, normalized metrics, baseline candidate comparison, formal offline plots, stopping verdict]
   - id: subsystem-localization
     prompt: Design a LiDAR-IMU-GNSS localization subsystem for ROS 2.
     expected_mode: architect
@@ -45,7 +53,7 @@ cases:
     prompt: Audit and modify a controller timing compensation implementation before hardware deployment.
     expected_mode: audit
     expected_scale: high-risk-change
-    max_references: 4
+    max_references: 5
     max_hypotheses: 3
     forbidden: [claiming safety from static review alone]
-    required: [success criteria, formula mapping, experiment evidence, rollback]
+    required: [success criteria, formula mapping, experiment evidence, result closure, rollback]
