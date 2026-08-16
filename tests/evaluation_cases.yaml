@@ -31,8 +31,16 @@ cases:
     expected_scale: domain
     max_references: 3
     max_hypotheses: 3
-    forbidden: [scattered top-level temp files, generic dashboard platform, dozens of plots]
-    required: [RUN result bundle, normalized metrics, baseline candidate comparison, formal offline plots, stopping verdict]
+    forbidden: [scattered top-level temp files, generic dashboard platform, arbitrary four-plot ceiling, dozens of plots without questions]
+    required: [RUN result bundle, normalized metrics, baseline candidate comparison, 4-6 Core Evidence, plot manifest when needed, stopping verdict]
+  - id: slam-longitudinal-root-cause
+    prompt: Bag2-1 develops a large longitudinal position error. Analyze whether it comes first from IMU prediction, scan-to-map update, observability loss, or map feedback, and preserve a reviewable visual result.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 3
+    max_hypotheses: 3
+    forbidden: [arbitrary four-plot ceiling, plotting every telemetry field, adding research-only logging to production without need]
+    required: [Core Evidence, shared distance or time axis, prediction or velocity evidence, matching correction evidence, observability evidence, hypothesis-driven figure selection, plot manifest, stop or next discriminating experiment]
   - id: subsystem-localization
     prompt: Design a LiDAR-IMU-GNSS localization subsystem for ROS 2.
     expected_mode: architect

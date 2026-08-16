@@ -23,14 +23,16 @@
 
 ## 正式运行证据
 
-当验证结论依赖 bag、轨迹、连续诊断、性能曲线或 A/B 数值时，读取 [结果管理](result_management.md) 和 [结果可视化](result_visualization.md)。
+当验证结论依赖 bag、轨迹、连续诊断、性能曲线或 A/B 数值时，读取 [结果管理](result_management.md) 和 [结果可视化](result_visualization.md)。SLAM/LIO/VIO/融合系统需要机制级结果时读取 [SLAM 结果画像](slam_visualization_profile.md)。
 
 - 保存 before/after 的机器可读指标，不只保存 stdout；
 - 保存复现图所需的最小 series，不要求保存所有内部变量；
-- 定位/SLAM 默认生成轨迹 XY、水平误差、误差分量和分段 RMSE；
-- 算法机制实验再增加最多一到两张假设专属图；
+- 定位/SLAM Core Evidence 默认 4–6 张，四张是最低核心证据而不是上限；
+- 每个活动假设选择 1–3 张能区分机制的诊断图，仍保持最多三个活动假设；
+- 完整 SLAM 验收出现 8–15 张有明确问题的正式图是正常范围，但不以图数作为质量指标；
 - RViz/rqt 截图只能作为辅助诊断，不能替代正式离线指标与图；
 - baseline/candidate 必须使用同一数据、对齐、时间和指标定义；
+- 超过六张图时维护 `plot_manifest.json`，明确每张图回答的问题；
 - 已有图和指标足以支持停止/继续时，不继续扩展日志字段和诊断分支。
 
 ## 回归判据

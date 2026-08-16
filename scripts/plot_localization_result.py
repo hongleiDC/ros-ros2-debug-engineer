@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Generate a compact formal localization plot set from aligned error CSV data."""
+"""Generate formal localization Core Evidence from aligned error CSV data."""
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
+import os
 from pathlib import Path
 
 import matplotlib
@@ -75,7 +77,34 @@ def segment_rmse(distance: list[float], error: list[float], segment_m: float) ->
     return centers, values
 
 
-def save_trajectory(data: dict[str, list[float]], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> None:
+def relative_plot_path(plot: Path, manifest: Path) -> str:
+    return Path(os.path.relpath(plot.resolve(), manifest.parent.resolve())).as_posix()
+
+
+def update_plot_manifest(manifest: Path, entries: list[dict[str, str]]) -> None:
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    data: dict[str, object] = {"schema_version": 1, "plots": []}
+    if manifest.is_file():
+        try:
+            loaded = json.loads(manifest.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and isinstance(loaded.get("plots"), list):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            pass
+    existing = {
+        item.get("file"): item
+        for item in data.get("plots", [])
+        if isinstance(item, dict) and isinstance(item.get("file"), str)
+    }
+    for entry in entries:
+        existing[entry["file"]] = entry
+    data["schema_version"] = 1
+    data["plots"] = list(existing.values())
+    manifest.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def save_trajectory(data: dict[str, list[float]], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path:
+    path = out / "trajectory_xy.png"
     fig, ax = plt.subplots(figsize=(7, 6))
     ax.plot(data["rtk_e"], data["rtk_n"], label="reference")
     if baseline:
@@ -88,11 +117,37 @@ def save_trajectory(data: dict[str, list[float]], out: Path, label: str, baselin
     ax.grid(True, alpha=0.25)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(out / "trajectory_xy.png", dpi=160)
+    fig.savefig(path, dpi=160)
     plt.close(fig)
+    return path
 
 
-def save_horizontal(data: dict[str, list[float]], distance: list[float], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> None:
+def save_height(data: dict[str, list[float]], distance: list[float], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path | None:
+    if "rtk_u" not in data or "lio_aligned_z" not in data:
+        return None
+    path = out / "height_profile.png"
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    x, y = finite_pairs(distance, data["rtk_u"])
+    ax.plot(x, y, label="reference")
+    if baseline and "lio_aligned_z" in baseline and "rtk_e" in baseline and "rtk_n" in baseline:
+        bdist = cumulative_distance(baseline["rtk_e"], baseline["rtk_n"])
+        bx, by = finite_pairs(bdist, baseline["lio_aligned_z"])
+        ax.plot(bx, by, label=baseline_label)
+    x, y = finite_pairs(distance, data["lio_aligned_z"])
+    ax.plot(x, y, label=label)
+    ax.set_xlabel("Reference distance [m]")
+    ax.set_ylabel("Up / aligned Z [m]")
+    ax.set_title("Height Profile vs Distance")
+    ax.grid(True, alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def save_horizontal(data: dict[str, list[float]], distance: list[float], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path:
+    path = out / "horizontal_error.png"
     fig, ax = plt.subplots(figsize=(8, 4.5))
     if baseline:
         bdist = cumulative_distance(baseline["rtk_e"], baseline["rtk_n"])
@@ -106,31 +161,38 @@ def save_horizontal(data: dict[str, list[float]], distance: list[float], out: Pa
     ax.grid(True, alpha=0.25)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(out / "horizontal_error.png", dpi=160)
+    fig.savefig(path, dpi=160)
     plt.close(fig)
+    return path
 
 
-def save_components(data: dict[str, list[float]], distance: list[float], out: Path) -> None:
+def save_components(data: dict[str, list[float]], distance: list[float], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path | None:
+    available = [(name, text) for name, text in (("err_lateral", "lateral"), ("err_longitudinal", "longitudinal"), ("err_z", "vertical")) if name in data]
+    if not available:
+        return None
+    path = out / "error_components.png"
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    plotted = False
-    for name, label in (("err_lateral", "lateral"), ("err_longitudinal", "longitudinal"), ("err_z", "vertical")):
-        if name in data:
-            x, y = finite_pairs(distance, data[name])
-            ax.plot(x, y, label=label)
-            plotted = True
+    for name, text in available:
+        if baseline and name in baseline:
+            bdist = cumulative_distance(baseline["rtk_e"], baseline["rtk_n"])
+            bx, by = finite_pairs(bdist, baseline[name])
+            ax.plot(bx, by, linestyle="--", label=f"{baseline_label} {text}")
+        x, y = finite_pairs(distance, data[name])
+        ax.plot(x, y, label=f"{label} {text}")
     ax.axhline(0.0, linewidth=0.8)
     ax.set_xlabel("Reference distance [m]")
     ax.set_ylabel("Signed error [m]")
     ax.set_title("Error Components vs Distance")
     ax.grid(True, alpha=0.25)
-    if plotted:
-        ax.legend()
+    ax.legend()
     fig.tight_layout()
-    fig.savefig(out / "error_components.png", dpi=160)
+    fig.savefig(path, dpi=160)
     plt.close(fig)
+    return path
 
 
-def save_segment(data: dict[str, list[float]], distance: list[float], out: Path, label: str, segment_m: float, baseline: dict[str, list[float]] | None, baseline_label: str) -> None:
+def save_segment(data: dict[str, list[float]], distance: list[float], out: Path, label: str, segment_m: float, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path:
+    path = out / "segment_rmse.png"
     fig, ax = plt.subplots(figsize=(8, 4.5))
     if baseline:
         bdist = cumulative_distance(baseline["rtk_e"], baseline["rtk_n"])
@@ -144,14 +206,43 @@ def save_segment(data: dict[str, list[float]], distance: list[float], out: Path,
     ax.grid(True, alpha=0.25)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(out / "segment_rmse.png", dpi=160)
+    fig.savefig(path, dpi=160)
     plt.close(fig)
+    return path
+
+
+def cdf(values: list[float]) -> tuple[list[float], list[float]]:
+    vals = sorted(v for v in values if math.isfinite(v))
+    if not vals:
+        return [], []
+    return vals, [(index + 1) / len(vals) for index in range(len(vals))]
+
+
+def save_error_cdf(data: dict[str, list[float]], out: Path, label: str, baseline: dict[str, list[float]] | None, baseline_label: str) -> Path:
+    path = out / "horizontal_error_cdf.png"
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    if baseline:
+        bx, by = cdf(baseline["err_horizontal"])
+        ax.plot(bx, by, label=baseline_label)
+    x, y = cdf(data["err_horizontal"])
+    ax.plot(x, y, label=label)
+    ax.set_xlabel("Horizontal error [m]")
+    ax.set_ylabel("CDF")
+    ax.set_ylim(0.0, 1.0)
+    ax.set_title("Horizontal Error Distribution")
+    ax.grid(True, alpha=0.25)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input_csv")
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--manifest")
     parser.add_argument("--label", default="candidate")
     parser.add_argument("--baseline-csv")
     parser.add_argument("--baseline-label", default="baseline")
@@ -170,12 +261,31 @@ def main() -> int:
 
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = Path(args.manifest) if args.manifest else out / "plot_manifest.json"
     distance = cumulative_distance(data["rtk_e"], data["rtk_n"])
-    save_trajectory(data, out, args.label, baseline, args.baseline_label)
-    save_horizontal(data, distance, out, args.label, baseline, args.baseline_label)
-    save_components(data, distance, out)
-    save_segment(data, distance, out, args.label, args.segment_m, baseline, args.baseline_label)
-    print(out.resolve())
+    generated: list[tuple[Path, str]] = []
+    generated.append((save_trajectory(data, out, args.label, baseline, args.baseline_label), "Where do estimate and reference trajectories diverge spatially?"))
+    height = save_height(data, distance, out, args.label, baseline, args.baseline_label)
+    if height:
+        generated.append((height, "Does vertical/terrain behavior explain part of the trajectory error?"))
+    generated.append((save_horizontal(data, distance, out, args.label, baseline, args.baseline_label), "At what traveled distance does horizontal error begin to grow?"))
+    components = save_components(data, distance, out, args.label, baseline, args.baseline_label)
+    if components:
+        generated.append((components, "Which signed error component dominates: lateral, longitudinal, or vertical?"))
+    generated.append((save_segment(data, distance, out, args.label, args.segment_m, baseline, args.baseline_label), "Which route segments dominate the aggregate horizontal error?"))
+    generated.append((save_error_cdf(data, out, args.label, baseline, args.baseline_label), "Did the error distribution and tail improve, not only the mean/RMSE?"))
+
+    entries = [
+        {
+            "file": relative_plot_path(plot, manifest),
+            "group": "core",
+            "question": question,
+            "source": str(path),
+        }
+        for plot, question in generated
+    ]
+    update_plot_manifest(manifest, entries)
+    print(json.dumps({"output_dir": str(out.resolve()), "generated": [str(p) for p, _ in generated], "manifest": str(manifest)}, indent=2))
     return 0
 
 

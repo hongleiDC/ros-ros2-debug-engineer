@@ -62,17 +62,22 @@ reports/
         │   ├── errors.csv
         │   └── diagnostics.csv
         ├── plots/
-        │   ├── trajectory_xy.png
-        │   ├── horizontal_error.png
-        │   ├── error_components.png
-        │   └── segment_rmse.png
+        │   ├── plot_manifest.json
+        │   ├── 01_core/
+        │   ├── 02_estimator/
+        │   ├── 03_matching/
+        │   ├── 04_observability/
+        │   ├── 05_fusion/
+        │   ├── 06_loop_map/
+        │   ├── 07_runtime/
+        │   └── 08_hypothesis/
         ├── logs/
         │   ├── stdout.log
         │   └── stderr.log
         └── report.md
 ```
 
-使用 `scripts/result_bundle.py init` 创建骨架，避免每次实验重新发明目录结构。
+不要求所有 plots 子目录存在；只创建实际需要的类别。使用 `scripts/result_bundle.py init` 创建骨架，避免每次实验重新发明目录结构。
 
 不要把 `temp_*.csv`、`eval.stdout`、bag、副本 YAML 或随机截图散落在 `reports/` 顶层。顶层只用于 EXP/RUN 组织和少量稳定索引。
 
@@ -127,9 +132,9 @@ reports/
 
 ## series、plots、logs 与 report
 
-`series/` 保存复现图表和进一步分析所需的最小时间序列、轨迹和诊断数据。CSV 首行必须有字段名；时间、frame、距离、单位和坐标系语义必须可确定。
+`series/` 保存复现图表和进一步分析所需的最小时间序列、轨迹和诊断数据。CSV 首行必须有字段名；时间、frame、距离、单位和坐标系语义必须可确定。对 SLAM 机制诊断优先把已有运行日志离线转换为规范化 `diagnostics.csv`，不要为了画图把 research-only telemetry 直接塞进生产核心路径。
 
-`plots/` 保存由已落盘 series/metrics 重新生成的正式离线图。不要把 RViz 截图作为唯一正式证据；RViz 适合交互诊断，离线图适合复核和 A/B。
+`plots/` 保存由已落盘 series/metrics 重新生成的正式离线图。不要把 RViz 截图作为唯一正式证据；RViz 适合交互诊断，离线图适合复核和 A/B。超过六张图或使用多个类别时维护 `plot_manifest.json`，记录图文件、group、question 和 source。
 
 `logs/` 保存 stdout、stderr、ROS/DDS 日志和必要 profiler 输出。大型原始 bag 不默认复制进 RUN；在 manifest 中记录原路径和 hash，只有用户要求归档时才复制。
 
@@ -163,9 +168,9 @@ python3 scripts/result_bundle.py init \
 
 3. 把 stdout/stderr 和运行输出直接定向到该 RUN 的 `logs/`、`series/` 或受控 artifact 目录。
 4. 运行结束后计算标准指标，写 `metrics.json`。
-5. 读取 [结果可视化](result_visualization.md)，从已保存数据生成正式图。
+5. 读取 [结果可视化](result_visualization.md)；SLAM/LIO/VIO/融合读取 [SLAM 结果画像](slam_visualization_profile.md)，从已保存数据生成 Core + 假设驱动图。
 6. 如果有 baseline，生成 `delta_metrics.json` 并使用同轴 A/B 图。
-7. 更新 manifest 的 `status`、`verdict`，完成 `report.md`。
+7. 图超过六张时维护 `plots/plot_manifest.json`，完成 `report.md`。
 8. 对正式实验执行：
 
 ```bash
@@ -202,9 +207,12 @@ python3 scripts/compare_result_metrics.py \
 - manifest 已标记 `status: completed`；
 - verdict 不再是 `pending`；
 - 至少一个主要判据已经写入 `metrics.json`；
-- 至少有一张正式离线图；定位/轨迹类按可视化参考生成最小图集；
+- 正式离线图已经覆盖当前任务所需的证据层；定位/SLAM 按结果画像检查，不以“一张图存在”作为领域闭环；
+- 图超过六张时存在可读的 `plot_manifest.json`；
 - `report.md` 已经给出决策和剩余风险，没有 TODO；
 - 结果能追溯到 commit、数据和配置。
+
+`result_bundle.py validate --closure` 只检查通用结构最小条件；领域证据完整性仍由本 Skill 的结果画像判断。不要把脚本结构校验成功误写成“SLAM 结果已经充分验证”。
 
 如果任务本身没有适用的图形或连续数值证据，在报告中写明例外，不要为了满足流程制造无意义图。
 

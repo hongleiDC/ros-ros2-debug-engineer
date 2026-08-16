@@ -45,15 +45,17 @@ description: "Design, review, implement, migrate, debug, and validate ROS 1 and 
 
 ## 运行结果闭环
 
-当任务包含 bag 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 baseline/candidate A/B 比较时，读取 [结果管理](references/result_management.md) 和 [结果可视化](references/result_visualization.md)。`micro`、纯编译/launch 修复、没有持久数值输出的普通调试不启用这一层。
+当任务包含 bag 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 baseline/candidate A/B 比较时，读取 [结果管理](references/result_management.md) 和 [结果可视化](references/result_visualization.md)。SLAM、LIO、VIO、定位或融合系统需要机制级分析时，再读取 [SLAM 结果画像](references/slam_visualization_profile.md)。`micro`、纯编译/launch 修复、没有持久数值输出的普通调试不启用这一层。
 
 在用户已授权运行和持久化结果时：
 
 1. 长时间运行前创建一个独立 `RUN-*` 结果包；不要把 CSV、stdout、临时文件散落在 `reports/` 顶层。
 2. 将标量判据写入 `metrics.json`，时间序列/轨迹写入 `series/`，正式离线图写入 `plots/`，运行日志写入 `logs/`，决策写入 `report.md`。
 3. baseline/candidate 使用相同数据、对齐、时间和指标定义；使用 `compare_result_metrics.py` 生成机器可读差异。
-4. 定位类结果优先使用 `plot_localization_result.py` 生成统一轨迹和误差图；再按假设最多补一到两张领域图，不建设通用 dashboard。
-5. 正式算法实验、验收或 audit 在可视化适用时，只有 `result_bundle.py validate <RUN_DIR> --closure` 通过后才能把该 RUN 作为 `decided/verified` 证据。若没有适用的数值/图形输出，在报告中明确说明例外。
+4. 定位/SLAM 先生成 4–6 张 Core Evidence；四张是最低核心证据，不是图数上限。再针对每个活动假设选择 1–3 张能区分机制的诊断图；最多三个活动假设与前述假设预算一致。完整 SLAM 验收出现 8–15 张有明确问题的图是正常范围，不把该范围当硬性上下限。
+5. 对兼容轨迹误差 CSV 使用 `plot_localization_result.py` 生成 Core Evidence；对规范化 `diagnostics.csv` 使用 `plot_slam_diagnostics.py` 按 estimator、matching、observability、fusion、runtime、loop 等类别生成机制图。不要为了图数建设通用 dashboard。
+6. 图数超过六张或按类别组织时维护 `plots/plot_manifest.json`，让每张图声明它回答的问题；报告只引用支持当前决策的图。
+7. 正式算法实验、验收或 audit 在可视化适用时，`result_bundle.py validate <RUN_DIR> --closure` 通过只是结构闭环的必要条件；SLAM/定位还必须满足对应结果画像和当前假设的证据完整性，才能把该 RUN 作为 `decided/verified` 证据。若没有适用的数值/图形输出，在报告中明确说明例外。
 
 ## `architect` 执行
 
@@ -74,5 +76,6 @@ description: "Design, review, implement, migrate, debug, and validate ROS 1 and 
 - 根因解释关键现象且同条件验证通过：停止。
 - 修复满足请求：不扩大为无关重构。
 - 数值实验的关键判据和图形证据已经支持继续/停止决策：停止增加诊断分支。
+- 已有图不能区分活动假设：只增加最有信息增益的一类诊断图或一个区分实验，不按“图不够多”扩张。
 - 架构覆盖目标约束、关键风险和实施路径：停止堆概念。
 - 证据不足：只给唯一最有价值的下一项证据。
