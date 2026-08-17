@@ -1,114 +1,71 @@
 # ros-ros2-systems-engineer
 
 [![Validate Skill](https://github.com/hongleiDC/ros-ros2-systems-engineer/actions/workflows/validate-skill.yml/badge.svg?branch=main)](https://github.com/hongleiDC/ros-ros2-systems-engineer/actions/workflows/validate-skill.yml)
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![ROS](https://img.shields.io/badge/ROS-1%20%7C%202-22314E?logo=ros&logoColor=white)
-![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)
-![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)
 
-面向 ChatGPT 与 Codex 的 ROS 1 / ROS 2 系统架构设计、开发、迁移、调试和运行结果分析 Skill。
+ROS 1 / ROS 2 系统架构、调试、验证与**可独立分析设计** Skill。
 
-当前定位：**ROS/ROS 2 系统工程师**，而不是单纯调试工具。
-
-使用：
+核心定位已经从“Agent 帮你多做实验分析”调整为：**Agent 在设计阶段把系统做成天然可观察、可复核、没有 AI 也能被工程师分析。**
 
 ```text
-$ros-ros2-systems-engineer
+Algorithm Contract
+→ Observation Contract
+→ Result Contract
+→ Visualization Contract
+→ Human Analysis Contract
 ```
 
-它提供：
-
-- ROS 系统架构设计；
-- package/node/component 划分；
-- topic/service/action 接口设计；
-- QoS、TF、时间同步、executor、lifecycle 设计；
-- ROS 运行时故障定位；
-- 低 Token、高信息增益调试流程；
-- bag/算法/标定/性能实验的统一结果保存；
-- baseline/candidate 指标比较与正式离线可视化；
-- SLAM/LIO/VIO 的 Core Evidence + 假设驱动机制图；
-- 高风险任务的可选审计追踪。
-
-## 三种工作模式
-
-### micro
-
-单个编译错误、参数问题、单文件逻辑或概念澄清。
-
-特点：不扫描整个仓库、不加载额外参考文档、不建立复杂记录或结果包。
-
-### standard
-
-跨文件、launch、运行图或复现问题：
-
-```text
-最小代码阅读
-→ 三个以内关键假设
-→ 高信息增益检查
-→ 最小修复
-→ 验证
-```
-
-### architect
-
-用于系统设计和重构。根据规模输出 component、subsystem 或 system 级方案，覆盖数据流、模块边界、接口契约、QoS、TF/时间、并发、生命周期、故障恢复、测试和部署。
-
-## 运行结果闭环
-
-只要任务依赖 bag 回放、轨迹误差、状态估计、标定、性能或 A/B 数值结果，就把一次具体执行视为一个 `RUN-*`，而不是继续向 `reports/` 顶层堆散乱文件。
-
-```text
-reports/
-└── EXP-0024/
-    └── RUN-20260804T153012Z-bag2-1/
-        ├── manifest.yaml
-        ├── metrics.json
-        ├── series/
-        ├── plots/
-        │   ├── plot_manifest.json
-        │   ├── 01_core/
-        │   ├── 02_estimator/
-        │   ├── 03_matching/
-        │   ├── 04_observability/
-        │   ├── 05_fusion/
-        │   ├── 06_loop_map/
-        │   └── 07_runtime/
-        ├── logs/
-        └── report.md
-```
-
-SLAM 的四张图只是最低 Core Evidence，不是上限：Core 一般 4–6 张，每个活动假设再选择 1–3 张机制图；完整 SLAM 验收出现 8–15 张有明确问题的图很正常，但数量不是 KPI。
-
-辅助工具：
+对定位、SLAM、LIO、VIO、融合等长期算法项目，推荐一次性初始化项目本地分析能力：
 
 ```bash
-python3 scripts/result_bundle.py init reports EXP-0024 --label bag2-1 --workspace .
-python3 scripts/plot_localization_result.py RUN/series/aligned_errors.csv \
-  --output-dir RUN/plots/01_core --manifest RUN/plots/plot_manifest.json
-python3 scripts/plot_slam_diagnostics.py RUN/series/diagnostics.csv \
-  --category estimator --category observability --category matching \
-  --output-dir RUN/plots --manifest RUN/plots/plot_manifest.json
-python3 scripts/compare_result_metrics.py BASE/metrics.json RUN/metrics.json --output RUN/delta_metrics.json
-python3 scripts/result_bundle.py validate RUN --closure
+python3 scripts/bootstrap_analysis_tooling.py PROJECT_ROOT --system lio
 ```
 
-原则：机器可读指标 + 足够的原始时间序列 + 少量 Core 图 + 按活动假设选择的机制图。不要用 dashboard、数据库、几十个无问题定义的图替代工程判断。
+它会安装：
 
-## audit
+```text
+PROJECT_ROOT/
+├── analysis/
+│   ├── observation_contract.yaml
+│   ├── analysis_profile.yaml
+│   └── README.md
+└── tools/analysis/
+    ├── analyze_run.py
+    ├── result_bundle.py
+    ├── plot_localization_result.py
+    ├── plot_slam_diagnostics.py
+    ├── compare_result_metrics.py
+    └── requirements.txt
+```
 
-仅用于用户明确要求完整追溯、高风险控制/硬件/标定/状态估计，以及正式验收或长期多人协作。此模式才默认启用 GOAL、实验登记、FORM/MAP/REAS/AUD 与长期知识记录。
+系统设计阶段只需把 Observation Contract 和 Analysis Profile 定制正确。之后每次 RUN 使用固定入口：
 
-## 设计原则
+```bash
+python3 tools/analysis/analyze_run.py RUN_DIR --strict
+```
+
+生成：
+
+```text
+RUN_DIR/report/
+├── index.html
+└── analysis_summary.json
+```
+
+工程师直接打开 `index.html`，按固定顺序阅读：Overall → Estimator → Frontend → Observability → Fusion → Loop/Map → Runtime → Decision。无需 ChatGPT、数据库或 Web 服务。
+
+Result Bundle 仍保存 `manifest.yaml`、`metrics.json`、`series/`、`plots/`、`logs/` 和 `report.md`；静态 report 是其中面向人的正式阅读入口。
+
+设计原则：
 
 - 简单问题简单解决；
-- 复杂度必须来自任务，而不是流程；
-- 先架构，再代码；
-- 先证据，再结论；
-- 运行结束不等于实验结束，结果可复核后才闭环；
-- 图数不是质量指标，信息增益才是；
-- 找到根因或得到明确实验判据后停止扩大范围。
+- 先设计 failure mode，再设计 observation；
+- 观测量的单位、frame、时间语义和解释长期稳定；
+- 图由项目契约稳定生成，而不是每次由 Agent 临时发明；
+- AI 是结果包的一个消费者，不是唯一分析器；
+- `ready_for_human_review` 只表示证据齐全，不代表算法正确；
+- 找到足够支持工程决策的证据后停止扩张 telemetry。
 
-## 验证
+验证：
 
 ```bash
 python3 scripts/preflight.py --require knowledge

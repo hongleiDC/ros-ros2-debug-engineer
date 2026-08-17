@@ -1,5 +1,5 @@
 schema_version: 1
-purpose: Manual behavior regression cases for architecture quality, token efficiency, and evidence closure.
+purpose: Manual behavior regression cases for architecture quality, token efficiency, evidence closure, and AI-independent analysis design.
 cases:
   - id: micro-cmake-error
     prompt: Explain this single CMake target_link_libraries error and provide the smallest fix.
@@ -9,14 +9,6 @@ cases:
     max_hypotheses: 1
     forbidden: [repository-wide scan, GOAL, FORM, MAP, REAS, AUD, result bundle]
     required: [root cause, minimal patch, focused validation]
-  - id: micro-heading-concept
-    prompt: What does dual-antenna heading offset mean in this parameter?
-    expected_mode: debug
-    expected_scale: micro
-    max_references: 0
-    max_hypotheses: 1
-    forbidden: [audit mode, experiment registry, knowledge base initialization, result bundle]
-    required: [plain explanation, frame or sign caveat]
   - id: standard-no-messages
     prompt: The ROS 2 publisher and subscriber both exist but the callback receives no messages.
     expected_mode: debug
@@ -25,43 +17,31 @@ cases:
     max_hypotheses: 3
     forbidden: [full repository scan, unrelated refactor]
     required: [message type, endpoint QoS, namespace or remap]
-  - id: runtime-ab-result-bundle
-    prompt: Compare baseline and candidate localization configs on the same bag, save the results cleanly, plot the important errors, and tell me whether the candidate should replace the baseline.
-    expected_mode: debug
-    expected_scale: domain
-    max_references: 3
-    max_hypotheses: 3
-    forbidden: [scattered top-level temp files, generic dashboard platform, arbitrary four-plot ceiling, dozens of plots without questions]
-    required: [RUN result bundle, normalized metrics, baseline candidate comparison, 4-6 Core Evidence, plot manifest when needed, stopping verdict]
-  - id: slam-longitudinal-root-cause
-    prompt: Bag2-1 develops a large longitudinal position error. Analyze whether it comes first from IMU prediction, scan-to-map update, observability loss, or map feedback, and preserve a reviewable visual result.
-    expected_mode: debug
-    expected_scale: domain
-    max_references: 3
-    max_hypotheses: 3
-    forbidden: [arbitrary four-plot ceiling, plotting every telemetry field, adding research-only logging to production without need]
-    required: [Core Evidence, shared distance or time axis, prediction or velocity evidence, matching correction evidence, observability evidence, hypothesis-driven figure selection, plot manifest, stop or next discriminating experiment]
-  - id: subsystem-localization
-    prompt: Design a LiDAR-IMU-GNSS localization subsystem for ROS 2.
+  - id: architect-human-analyzable-lio
+    prompt: Design a LiDAR-IMU-RTK localization subsystem that our engineers can diagnose from saved results even when ChatGPT is unavailable.
     expected_mode: architect
     expected_scale: subsystem
-    max_references: 2
     max_hypotheses: 0
-    forbidden: [generic node list without tradeoffs]
-    required: [data flow, package structure, interface table, TF ownership, time source, failure recovery]
-  - id: system-fleet
-    prompt: Redesign an existing multi-robot ROS 2 system without breaking deployed interfaces.
-    expected_mode: architect
-    expected_scale: system
-    max_references: 2
-    max_hypotheses: 0
-    forbidden: [big-bang migration]
-    required: [resource budget, deployment topology, compatibility boundary, migration stages, rollback points]
+    forbidden: [AI-only analysis workflow, ad-hoc per-run plotting, telemetry without semantics]
+    required: [Algorithm Contract, Observation Contract, Result Contract, Visualization Contract, Human Analysis Contract, stable units and frames, project-local static report]
+  - id: runtime-ab-result-bundle
+    prompt: Compare baseline and candidate localization configs on the same bag and leave a result that another engineer can inspect later without AI.
+    expected_mode: debug
+    expected_scale: domain
+    max_hypotheses: 3
+    forbidden: [scattered top-level temp files, generic dashboard platform, AI-only verdict]
+    required: [RUN result bundle, normalized metrics, baseline candidate comparison, static human report, repeatable analysis profile]
+  - id: slam-longitudinal-root-cause
+    prompt: Bag2-1 develops a longitudinal error. Design the evidence path so a human can determine whether prediction, scan update, observability, or map feedback fails first.
+    expected_mode: debug
+    expected_scale: domain
+    max_hypotheses: 3
+    forbidden: [plotting every telemetry field, research-only production pollution, depending on Agent interpretation for basic navigation]
+    required: [Core Evidence, Observation Contract, shared time or distance axis, prediction evidence, matching correction, observability evidence, fixed reading order, static index.html]
   - id: audit-controller-deployment
     prompt: Audit and modify a controller timing compensation implementation before hardware deployment.
     expected_mode: audit
     expected_scale: high-risk-change
-    max_references: 5
     max_hypotheses: 3
     forbidden: [claiming safety from static review alone]
     required: [success criteria, formula mapping, experiment evidence, result closure, rollback]

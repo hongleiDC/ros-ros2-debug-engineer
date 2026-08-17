@@ -1,9 +1,9 @@
 interface:
   display_name: "ROS/ROS 2 系统架构与调试工程师"
-  short_description: "低 Token 设计、调试，并把运行结果规范化为可比较证据"
+  short_description: "设计可观测、可验证、无 AI 也能独立分析的 ROS 系统"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
-  default_prompt: "Use $ros-ros2-systems-engineer to choose the smallest suitable architecture or debugging scope, inspect only decisive evidence, and when runtime numerical evidence matters, persist it as a reproducible result bundle with normalized metrics, formal offline plots, and baseline/candidate comparison before declaring a result verified."
+  default_prompt: "Use $ros-ros2-systems-engineer to design or debug the smallest relevant ROS scope. For state estimation, SLAM, fusion, bag evaluation, or long-running algorithms, design stable observation/result/visualization/human-analysis contracts so project-local tooling can generate a static report that engineers can interpret without AI."
 policy:
   allow_implicit_invocation: false
   products:

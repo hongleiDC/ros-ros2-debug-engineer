@@ -37,13 +37,7 @@ def slug(text: str) -> str:
 
 def run_git(workspace: Path, *args: str) -> str | None:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(workspace), *args],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        result = subprocess.run(["git", "-C", str(workspace), *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     except (OSError, subprocess.CalledProcessError):
         return None
     return result.stdout.strip()
@@ -55,12 +49,7 @@ def git_info(workspace: Path | None) -> dict[str, object]:
     commit = run_git(workspace, "rev-parse", "HEAD")
     branch = run_git(workspace, "rev-parse", "--abbrev-ref", "HEAD")
     status = run_git(workspace, "status", "--porcelain")
-    return {
-        "workspace": str(workspace.resolve()),
-        "branch": branch,
-        "commit": commit,
-        "dirty": None if status is None else bool(status),
-    }
+    return {"workspace": str(workspace.resolve()), "branch": branch, "commit": commit, "dirty": None if status is None else bool(status)}
 
 
 def file_records(paths: Iterable[str]) -> list[dict[str, object]]:
@@ -95,6 +84,7 @@ def init_bundle(args: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     for name in REQUIRED_DIRS:
         (run_dir / name).mkdir(exist_ok=True)
+    (run_dir / "report").mkdir(exist_ok=True)
 
     workspace = Path(args.workspace).expanduser().resolve() if args.workspace else None
     manifest = {
@@ -104,10 +94,7 @@ def init_bundle(args: argparse.Namespace) -> int:
         "created_utc": utc_now(),
         "label": args.label,
         "git": git_info(workspace),
-        "inputs": {
-            "datasets": file_records(args.dataset_file),
-            "configs": file_records(args.config_file),
-        },
+        "inputs": {"datasets": file_records(args.dataset_file), "configs": file_records(args.config_file)},
         "command": args.command,
         "baseline_run": args.baseline_run,
         "status": "planned",
@@ -118,6 +105,8 @@ def init_bundle(args: argparse.Namespace) -> int:
             "plots_dir": "plots",
             "logs_dir": "logs",
             "report": "report.md",
+            "human_report": "report/index.html",
+            "analysis_summary": "report/analysis_summary.json",
         },
     }
     atomic_text(run_dir / "manifest.yaml", yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
@@ -125,12 +114,9 @@ def init_bundle(args: argparse.Namespace) -> int:
     atomic_text(run_dir / "metrics.json", json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
     report = (
         f"# {args.experiment_id} / {run_id}\n\n"
-        "## Decision\n\n"
-        "TODO: state the decision first.\n\n"
-        "## Evidence\n\n"
-        "TODO: cite metrics and plots that support the decision.\n\n"
-        "## Remaining risk\n\n"
-        "TODO: record only unresolved risks that affect the next decision.\n"
+        "## Decision\n\nTODO: state the decision first.\n\n"
+        "## Evidence\n\nTODO: cite metrics and plots that support the decision.\n\n"
+        "## Remaining risk\n\nTODO: record only unresolved risks that affect the next decision.\n"
     )
     atomic_text(run_dir / "report.md", report)
     print(run_dir)
@@ -179,7 +165,6 @@ def validate_bundle(args: argparse.Namespace) -> int:
             errors.append(f"manifest.yaml missing key: {key}")
     if manifest.get("run_id") and metrics.get("run_id") and manifest.get("run_id") != metrics.get("run_id"):
         errors.append("run_id differs between manifest.yaml and metrics.json")
-
     metric_map = metrics.get("metrics") if isinstance(metrics, dict) else None
     if metric_map is not None and not isinstance(metric_map, dict):
         errors.append("metrics.json metrics must be an object")
@@ -192,7 +177,7 @@ def validate_bundle(args: argparse.Namespace) -> int:
         if not isinstance(metric_map, dict) or not metric_map:
             errors.append("closure requires at least one normalized metric")
         plot_dir = run_dir / "plots"
-        plots = [p for p in plot_dir.iterdir() if p.is_file() and p.suffix.lower() in PLOT_SUFFIXES] if plot_dir.is_dir() else []
+        plots = [path for path in plot_dir.rglob("*") if path.is_file() and path.suffix.lower() in PLOT_SUFFIXES] if plot_dir.is_dir() else []
         if not plots:
             errors.append("closure requires at least one formal offline plot")
         if report_path.is_file():
@@ -201,6 +186,21 @@ def validate_bundle(args: argparse.Namespace) -> int:
                 errors.append("closure requires report.md TODO items to be resolved")
             if len(report.strip()) < 80:
                 errors.append("closure requires a substantive report.md")
+
+    if args.human_analysis:
+        index_path = run_dir / "report" / "index.html"
+        summary_path = run_dir / "report" / "analysis_summary.json"
+        if not index_path.is_file():
+            errors.append("human-analysis validation requires report/index.html")
+        if not summary_path.is_file():
+            errors.append("human-analysis validation requires report/analysis_summary.json")
+        else:
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                if not isinstance(summary, dict) or summary.get("ready_for_human_review") is not True:
+                    errors.append("human-analysis validation requires ready_for_human_review: true")
+            except json.JSONDecodeError as exc:
+                errors.append(f"invalid report/analysis_summary.json: {exc}")
 
     for path in run_dir.iterdir() if run_dir.is_dir() else []:
         if path.is_file() and path.suffix.lower() in {".csv", ".log", ".bag", ".db3", ".mcap"}:
@@ -214,7 +214,6 @@ def validate_bundle(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command_name", required=True)
-
     init = sub.add_parser("init", help="create a new result bundle")
     init.add_argument("reports_root")
     init.add_argument("experiment_id")
@@ -227,10 +226,10 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--baseline-run")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=init_bundle)
-
     validate = sub.add_parser("validate", help="validate an existing result bundle")
     validate.add_argument("run_dir")
     validate.add_argument("--closure", action="store_true")
+    validate.add_argument("--human-analysis", action="store_true", help="also require a ready static human analysis report")
     validate.set_defaults(func=validate_bundle)
     return parser
 
