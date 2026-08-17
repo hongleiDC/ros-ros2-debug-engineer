@@ -1,232 +1,118 @@
 # SLAM / LIO / VIO 结果画像
 
-## 目录
-
-- [目的](#目的)
-- [先回答四个问题](#先回答四个问题)
-- [证据层级](#证据层级)
-- [图表类别](#图表类别)
-- [典型实验画像](#典型实验画像)
-- [无真值场景](#无真值场景)
-- [diagnosticscsv 规范字段](#diagnosticscsv-规范字段)
-- [目录与报告顺序](#目录与报告顺序)
-- [停止条件](#停止条件)
-
 ## 目的
 
-SLAM 系统的“结果好不好”不能只由一条轨迹和一个 RMSE 判断。完整分析需要把外部误差、估计器状态、匹配质量、可观测性、融合、闭环/地图反馈和实时性能串成因果链。
+定义一个**系统级、长期稳定**的 SLAM 结果画像，使每次 RUN 自动产生同一种证据结构，工程师即使没有 AI 也能按固定顺序判断哪一层首先异常。
 
-四张 Core 图是最低证据，不是上限。复杂 SLAM 任务使用“固定核心 + 假设驱动机制图”，而不是“固定四张”或“全变量可视化”。
-
-## 先回答四个问题
-
-每次选择图前先明确：
-
-1. **What**：最终退化是什么？位置、姿态、地图、速度、尺度、闭环还是实时性？
-2. **Where/When**：从哪一段距离、时间、场景或状态开始？
-3. **Which layer first**：prediction、scan/visual update、fusion、map feedback、loop closure 或 runtime 哪层先异常？
-4. **Why**：当前活动假设中的哪一个能解释该顺序？
-
-图表必须服务于这四个问题。不能回答问题的图默认不生成。
+该画像在项目设计阶段固化到 `analysis/observation_contract.yaml` 与 `analysis/analysis_profile.yaml`。运行时不是让 Agent 再决定“今天画哪几张”。
 
 ## 证据层级
 
-按层级选择，不按固定数量选择：
+### L0 Core accuracy
 
-- **L0 Core，4–6 张**：轨迹、总误差、误差分量、分段、分布、高度/姿态中适用的最小集合。
-- **L1 Estimator/Frontend，每个活动假设 1–3 张**：prediction vs update、velocity、bias、matching residual/correction、feature/correspondence。
-- **L2 Observability/Fusion，每个活动假设 1–3 张**：方向信息量、Hessian、innovation/gate、measurement status。
-- **L3 Map/Loop，按系统启用**：revisit、submap/map consistency、loop candidate/accepted、pose-graph correction。
-- **L4 Runtime，1–2+ 张**：只有当算法增加复杂度、出现 backlog 或实时性本身是成功判据时启用。
+回答最终表现和退化位置：
 
-典型完整 RUN 常见 8–15 张正式图，但不把 8 或 15 作为流程门槛。
-
-## 图表类别
-
-### Core accuracy
-
-优先：
-
-- trajectory XY / 3D；
-- height 或 orientation profile；
-- horizontal/position error vs distance/time；
-- signed lateral/longitudinal/vertical 与 roll/pitch/yaw error；
+- trajectory XY/3D；
+- height/orientation profile（适用时）；
+- position/horizontal error vs distance/time；
+- signed lateral/longitudinal/vertical 与姿态误差；
 - segment RMSE/P95 或 drift-per-distance；
-- error CDF / tail distribution。
+- error CDF/tail distribution。
 
-### Estimator state
+### L1 Estimator / prediction
 
-当怀疑 IMU prediction、速度或状态传播时：
+回答误差是否在 measurement update 之前已经出现：
 
-- estimated vs reference velocity；
-- velocity error，尤其车辆前向/横向分量；
+- estimated/reference velocity 与 velocity error；
 - gyro/accel bias；
 - gravity/attitude residual；
-- prediction-to-update correction magnitude；
-- covariance，或明确标注为 proxy 的 uncertainty 指标。
+- prediction-to-update correction；
+- 真正 covariance 或明确命名的 proxy。
 
-不要把未标定 heuristic sigma 命名为 covariance。
+### L2 Frontend / matching
 
-### Scan / visual matching
+回答 scan/visual update 是否引入或放大误差：
 
-当怀疑前端匹配时：
+- translation/yaw correction；
+- residual/cost；
+- correspondence/effective feature count；
+- convergence/optimization iterations。
 
-- scan/feature residual；
-- translation/yaw update correction；
-- correspondence / effective feature count；
-- optimization iterations / convergence status；
-- cost profile vs perturbation，在验证局部 basin、强度或方向搜索时使用。
+### L3 Observability / degeneracy
 
-### Observability / degeneracy
+回答约束是否在对应方向失效：
 
-当怀疑几何退化或方向不可观测时：
-
-- longitudinal/lateral/yaw directional information；
+- longitudinal/lateral/yaw information；
 - Hessian/JTJ eigenvalues；
 - condition number；
-- degeneracy flag 或 effective dimension；
-- 与误差增长共享 distance/time 横轴。
+- degeneracy flag/effective dimension。
 
-不要只画“最小特征值很小”，同时检查它是否在误差增长之前或同时变化。
+必须与外部误差共享或可对应到同一 time/distance 轴，不能只看“最小特征值很小”就宣称根因。
 
-### Fusion / RTK / GNSS
+### L4 Fusion
 
-当外部定位参与估计时：
+外部定位参与时：
 
 - innovation/residual 与 gate；
 - accept/reject；
 - fix/status/quality；
-- measurement age / publish delay；
-- measurement update correction；
-- 有 lever arm/time offset 时单独验证它们，不把 re-entry jump 全部归因于 estimator。
+- measurement age/delay；
+- measurement update correction。
 
-### Loop / map
+必须区分 measurement quality/timing 和 estimator response。
 
-真正的 SLAM 而非纯 odometry 还应按问题检查：
+### L5 Loop / map
 
-- loop candidate score 与 accepted/rejected；
-- loop 前后 pose graph correction；
+真正包含 loop closure、pose graph、submap 或 recursive map feedback 时：
+
+- loop candidate/accepted；
+- loop/pose graph correction；
 - loop residual；
 - revisit alignment error；
-- submap overlap/consistency；
-- map deformation、duplicate structure 或长期弯曲的可量化 proxy。
+- submap/map consistency。
 
-只有地图点数本身通常不能证明地图质量。
+纯 odometry/localization 不要求这一层。
 
-### Runtime
+### L6 Runtime
 
-算法或诊断逻辑增加计算量时：
+长期算法应根据成功判据固定：
 
 - frame total runtime；
-- scan matching / optimization / map update 分阶段 runtime；
-- CPU、RSS；
-- queue/backlog、real-time factor 或 deadline miss。
+- matching/optimization/map update 等阶段耗时；
+- CPU/RSS；
+- queue/backlog/realtime factor/deadline miss。
 
-性能图与精度图一起看，避免“精度提高 1%，runtime 增加 40%”被遗漏。
+精度和 runtime 一起验收。
 
-## 典型实验画像
+## Observation Contract 字段
 
-### 简单 baseline/candidate 精度回归
-
-建议 5–8 张：Core 4–6 + 关键 orientation/velocity 或 runtime 1–2。目的只是判断 candidate 是否整体更好，不深入所有内部状态。
-
-### 纵向漂移根因
-
-建议围绕同一 distance 轴形成因果链：
+项目不必拥有所有字段，只声明系统实际需要的稳定字段。常用规范列包括：
 
 ```text
-trajectory / horizontal error
-→ longitudinal vs lateral error
-→ prediction longitudinal increment or velocity error
-→ scan-to-map longitudinal correction
-→ longitudinal observability
-→ map feedback / fixed-map comparison
-```
-
-常见 8–12 张。若 prediction 阶段已经先偏离，就不要继续大量扩展 intensity/matching 图；若 prediction 正常而 update 后偏离，再集中看 matching 与 observability。
-
-### RTK 融合问题
-
-Core + innovation/gate + fix/status + timing/age + update correction + relevant bias/velocity，常见 8–12 张。必须区分 RTK measurement quality、时间/lever arm、gate 和 estimator response。
-
-### 完整 SLAM 验收
-
-Core + estimator + matching + observability + fusion（若有）+ loop/map + runtime，常见 10–15 张。只有系统确实包含对应机制时才启用该类别。
-
-## 无真值场景
-
-没有 RTK/mocap/ground truth 时，不伪造绝对 accuracy 结论。可使用：
-
-- Relative Pose Error / drift per distance；
-- loop/revisit consistency；
-- repeated-route closure error；
-- map/submap consistency；
-- sensor innovation consistency；
-- simulation or partial reference segments；
-- known landmarks / surveyed constraints。
-
-报告必须把“self-consistency”与“absolute accuracy”分开。
-
-## diagnostics.csv 规范字段
-
-`plot_slam_diagnostics.py` 对以下规范字段按存在性生成图；项目不必输出全部字段。优先复用现有日志转换成这些字段，不要为了画图侵入生产核心算法。
-
-通用横轴字段，按优先级：
-
-- `distance_m`
-- `reference_distance_m`
-- `relative_time_s`
-- `timestamp`
-
-常用字段示例：
-
-```text
-velocity_x_mps
-velocity_y_mps
-velocity_z_mps
-velocity_longitudinal_mps
-velocity_lateral_mps
-reference_velocity_longitudinal_mps
+distance_m / reference_distance_m / relative_time_s / timestamp
 velocity_error_longitudinal_mps
 velocity_error_lateral_mps
-
-gyro_bias_x_rad_s
-gyro_bias_y_rad_s
-gyro_bias_z_rad_s
-accel_bias_x_mps2
-accel_bias_y_mps2
-accel_bias_z_mps2
-
+gyro_bias_*_rad_s
+accel_bias_*_mps2
 scan_match_correction_longitudinal_m
 scan_match_correction_lateral_m
-scan_match_correction_vertical_m
 scan_match_correction_yaw_deg
 scan_match_residual_m
 correspondence_count
 optimization_iterations
-
 longitudinal_information
 lateral_information
 yaw_information
 hessian_min_eigenvalue
-hessian_max_eigenvalue
 hessian_condition_number
-degeneracy_flag
-
 rtk_innovation_m
-gnss_innovation_m
 rtk_gate_m
-gnss_gate_m
 rtk_accepted
-gnss_accepted
 measurement_age_ms
-
 loop_correction_m
-loop_correction_yaw_deg
 loop_residual_m
 loop_accepted
 revisit_error_m
-
 frame_runtime_ms
 scan_match_runtime_ms
 optimization_runtime_ms
@@ -235,32 +121,61 @@ cpu_percent
 rss_mb
 ```
 
-字段没有可靠物理含义、单位或 frame 时先修正数据契约，不要急着画图。
+每个字段必须在 Observation Contract 中定义 unit、frame、time basis、source、required 和 interpretation。字段没有可靠物理语义时先修正契约，不急着画图。
 
-## 目录与报告顺序
+## 典型固定画像
 
-推荐：
+### LIO / RTK localization
+
+通常固定：Core + estimator + matching + observability + runtime；如果 RTK 是在线融合输入，则 fusion 也应启用并根据系统目标设为 required。
+
+### 完整 SLAM
+
+通常固定：Core + estimator + matching + observability + loop/map + runtime；有外部 aiding 再加入 fusion。
+
+### 纯 localization 回归
+
+可以只保留 Core + 与该系统真实 failure mode 相关的一两个稳定层，不强行复制完整 SLAM 画像。
+
+图数只用于检查 profile 是否异常膨胀；不是每次运行的任务量目标。
+
+## 纵向漂移的人类阅读链
+
+纵向漂移是一个 Analysis Contract 示例，而不是临时 Agent 提示词：
 
 ```text
-plots/
-├── plot_manifest.json
-├── 01_core/
-├── 02_estimator/
-├── 03_matching/
-├── 04_observability/
-├── 05_fusion/
-├── 06_loop_map/
-├── 07_runtime/
-└── 08_hypothesis/
+trajectory / horizontal error
+→ signed longitudinal vs lateral error
+→ longitudinal velocity/prediction evidence
+→ scan-to-map longitudinal correction
+→ longitudinal observability
+→ map feedback / loop correction（若存在）
+→ runtime side effect
 ```
 
-报告阅读顺序保持：**现象 → 首个异常层 → 机制证据 → 性能代价 → Decision**。不要按脚本执行顺序或文件生成时间写报告。
+解释顺序：
 
-如果多张机制图需要比较因果顺序，尽量共享同一 distance/time 横轴，并在报告中引用 `plot_manifest.json` 的 question。
+- prediction/velocity 先异常：优先 IMU、时间、bias、运动模型；
+- prediction 正常而 update 后偏离：优先 matching/frontend；
+- directional information 更早下降：考虑几何可观测性；
+- local estimate 正常而 map/loop 后跳变：调查 recursive map/pose graph feedback；
+- RTK innovation/gate 先异常：先分离 measurement/timing 与 estimator response。
+
+这条阅读路径应出现在静态 `report/index.html` 的 section 顺序和 guidance 中，使人工无需 AI 也能走完。
+
+## 无真值场景
+
+没有 RTK/mocap/ground truth 时，不伪造 absolute accuracy。可固定使用：RPE/drift per distance、loop/revisit consistency、repeated-route closure、map/submap consistency、sensor innovation consistency、partial surveyed constraints。
+
+报告必须把 self-consistency 和 absolute accuracy 分开。
+
+## 特殊研究图
+
+cost sweep、oracle、intensity basin、特殊 perturbation 等研究图属于 `08_hypothesis/`。它们默认不进入长期 SLAM profile。只有多次证明对常规诊断有稳定价值后，才升级为长期 Observation/Visualization Contract。
 
 ## 停止条件
 
-- Core 已经证明 candidate 失败并达到回滚条件：停止，不为了完整性继续画内部状态。
-- 一类机制图已经排除一个活动假设：删除/降级该假设，不继续给它增加图。
-- 已经确定最早异常层：下一步优先设计区分实验或最小修复，不继续横向增加 telemetry。
-- 三个活动假设仍无法区分：新增一个高信息量实验，而不是把所有 estimator 字段都接入日志。
+- 系统 profile 已覆盖关键 failure layers：停止扩默认图；
+- required signal 缺失：补 Observation Contract 对应的数据源；
+- 固定报告已经定位 earliest abnormal layer：下一步做区分实验或最小修复；
+- 固定报告仍不能区分：设计一个高信息量实验，不把所有 estimator 变量接入长期日志。
