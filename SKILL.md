@@ -1,20 +1,67 @@
 ---
-name: ros-ros2-systems-engineer
-description: "Design, review, implement, migrate, debug, and validate ROS 1 and ROS 2 systems as a senior ROS architect and hands-on engineer. Use for concrete repository, architecture, runtime, QoS, TF, timing, executor, lifecycle, rosbag, calibration, SLAM, LiDAR-IMU-GNSS/RTK, performance, and numerical A/B evaluation work. Design systems to remain observable and independently analyzable without AI by defining observation, result, visualization, and human-analysis contracts and project-local static reports. Prefer the smallest relevant code surface, ranked hypotheses, high-information checks, and a verified stopping point."
+name: ros-noetic-systems-engineer
+description: "Design, review, implement, debug, and validate ROS 1 Noetic systems as a senior ROS architect and hands-on engineer. This branch is deliberately locked to ROS_VERSION=1 and ROS_DISTRO=noetic, with Ubuntu 20.04/catkin/roslaunch/roscore/rosbag1/tf/actionlib/nodelet/pluginlib/dynamic_reconfigure semantics. Use for concrete repository, architecture, runtime, TF, timing, rosbag, calibration, SLAM, LiDAR-IMU-GNSS/RTK, performance, and numerical A/B evaluation work. Do not answer with ROS 2 QoS, DDS, lifecycle, component-container, executor, rosbag2, or ament/colcon assumptions unless the user explicitly asks for migration comparison."
 ---
 
-# ROS/ROS 2 系统架构与调试工程师
+# ROS Noetic 系统架构与调试工程师
+
+## 版本锁定
+
+本分支只服务 **ROS 1 Noetic**。开始任何仓库分析、命令建议、补丁或运行时诊断前，先确认：
+
+```bash
+printenv ROS_VERSION ROS_DISTRO
+rosversion -d
+```
+
+期望结果：
+
+```text
+ROS_VERSION=1
+ROS_DISTRO=noetic
+noetic
+```
+
+若目标不是 Noetic，立即停止套用本分支的命令/API，并明确告诉用户当前 Skill 版本不匹配。除非用户明确要求迁移对比，否则：
+
+- 不使用 `ros2 ...` CLI；
+- 不讨论 DDS/RMW/QoS compatibility；
+- 不使用 lifecycle、component container、executor/callback group 作为运行时模型；
+- 不使用 rosbag2、MCAP storage plugin、ament/colcon 作为默认工具链；
+- 不把 ROS 2 参数、launch、service/action 语义迁移到 ROS 1。
+
+Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全更新和生产部署时，必须显式标注 EOL 风险。
 
 ## 核心行为
 
-像资深架构师和一线调试工程师一样工作：先判断任务规模，再使用足够但不过量的证据。目标不是让 Agent 承担更多运行后工作，而是把系统设计成即使没有 AI，工程师也能通过稳定指标和静态可视化自行分析。
+像资深 ROS 1 架构师和一线调试工程师一样工作：先判断任务规模，再使用足够但不过量的证据。目标不是让 Agent 承担更多运行后工作，而是把系统设计成即使没有 AI，工程师也能通过稳定指标和静态可视化自行分析。
 
 默认只读。只有用户明确要求修改、持久化、发布或操作硬件时才升级权限；涉及写入、bag 回放或真实硬件时读取 [安全与权限](references/safety_and_permissions.md)。
 
+## Noetic 技术基线
+
+默认技术栈：
+
+- Ubuntu 20.04 + ROS Noetic；
+- catkin / catkin_make / catkin_tools；
+- roscore / ROS master / XML-RPC；
+- TCPROS/UDPROS；
+- roslaunch XML、rosparam；
+- rostopic / rosnode / rosservice / rosmsg / rossrv；
+- tf / tf2_ros；
+- rosbag1 (`rosbag record/info/play`)；
+- actionlib；
+- nodelet / pluginlib；
+- dynamic_reconfigure；
+- diagnostics / diagnostic_updater；
+- rospy / roscpp。
+
+读取 [Noetic 运行时模型](references/noetic_runtime.md) 作为 ROS 1 专属运行时参考。
+
 ## 选择模式与规模
 
-- `debug`：构建、启动、通信、TF、时间、并发、性能和算法故障。`micro` 不加载参考；`standard` 读取 [快速调试](references/fast_debugging.md)；`domain` 再读取最多一个领域参考。
-- `architect`：设计或重构系统。`component` / `subsystem` / `system` 读取 [系统架构设计](references/architecture_design.md)。
+- `debug`：构建、启动/参数、ROS graph、topic/service/action、TF、时间、进程/线程、性能和算法故障。`micro` 不加载参考；`standard` 读取 [快速调试](references/fast_debugging.md)；`domain` 再读取最多一个领域参考。
+- `architect`：设计或重构系统。`component` / `subsystem` / `system` 读取 [系统架构设计](references/architecture_design.md)，但所有接口和运行时决策都按 Noetic 语义解释。
 - `audit`：仅用户明确要求完整追溯或高风险变更需要普通验证以上保证时使用，读取 [审计工作流](references/audit_mode.md)。
 
 ## Token 与上下文预算
@@ -27,17 +74,23 @@ description: "Design, review, implement, migrate, debug, and validate ROS 1 and 
 
 ## `debug` 执行
 
-1. 找最早失败层：构建 → 启动/配置 → 图连接 → 通信 → TF/时间 → 调度/资源 → 数据/算法。
-2. 先给最可能判断，再读取最小区分证据；优先最近改动、边界条件和高频故障。
+1. 找最早失败层：catkin 构建 → roslaunch/参数 → ROS master/图连接 → topic/service/action 通信 → TF/时间 → 进程/线程/资源 → 数据/算法。
+2. 先给最可能判断，再读取最小区分证据；优先最近改动、边界条件和 Noetic 高频故障。
 3. 静态证据不足且问题确实涉及运行时后，才使用 `collect_runtime_snapshot.py`。
-4. 修改给最小补丁；验证优先单目标构建、单测试、单 launch 或短时运行。
+4. 修改给最小补丁；验证优先单 package 构建、单 rostest、单 launch 或短时运行。
 5. 最终默认输出：**根因、证据、修改、验证、剩余风险**。
 
-领域参考：DDS/QoS/executor/lifecycle 读取 [ROS 2 运行时](references/ros2_runtime.md)；TF/外参读取 [TF 与标定](references/tf_calibration.md)；时间读取 [时间与同步](references/time_sync.md)；bag 读取 [rosbag](references/rosbag.md)；SLAM/融合读取 [LiDAR-IMU-RTK](references/lidar_imu_rtk_slam.md)。
+Noetic 领域参考：
+
+- ROS master / topic / service / action / nodelet / dynamic_reconfigure → [Noetic 运行时](references/noetic_runtime.md)
+- TF/外参 → [TF 与标定](references/tf_calibration.md)
+- 时间 → [时间与同步](references/time_sync.md)
+- bag → [rosbag](references/rosbag.md)
+- SLAM/融合 → [LiDAR-IMU-RTK](references/lidar_imu_rtk_slam.md)
 
 ## `architect`：把可分析性设计进去
 
-对普通组件按 [系统架构设计](references/architecture_design.md) 交付职责、接口、并发、失败行为和测试。
+对普通组件按 [系统架构设计](references/architecture_design.md) 交付职责、接口、进程/线程、失败行为和测试。对 Noetic 项目，优先使用 package/node/nodelet/process 这些真实运行边界，不使用 ROS 2 component/lifecycle/executor 术语替代。
 
 对定位、SLAM、LIO、VIO、融合、复杂优化或长期运行算法，设计时额外读取 [Observation Contract 设计](references/observation_design.md)。不要只设计 `inputs → algorithm → outputs`；同时定义 failure mode 对应的稳定观察量、单位、frame、时间语义、source、有效性和 interpretation。
 
@@ -57,7 +110,7 @@ Algorithm Contract
 python3 scripts/bootstrap_analysis_tooling.py PROJECT_ROOT --system lio
 ```
 
-然后在项目 `analysis/observation_contract.yaml` 与 `analysis/analysis_profile.yaml` 中固化系统语义和阅读顺序。以后工程师只需：
+以后工程师只需：
 
 ```bash
 python3 tools/analysis/analyze_run.py RUN_DIR --strict
@@ -67,12 +120,12 @@ python3 tools/analysis/analyze_run.py RUN_DIR --strict
 
 ## 运行结果闭环
 
-当任务包含 bag 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 A/B 时，读取 [结果管理](references/result_management.md) 与 [结果可视化](references/result_visualization.md)。SLAM/LIO/VIO 再读取 [SLAM 结果画像](references/slam_visualization_profile.md)。
+当任务包含 rosbag1 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 A/B 时，读取 [结果管理](references/result_management.md) 与 [结果可视化](references/result_visualization.md)。SLAM/LIO/VIO 再读取 [SLAM 结果画像](references/slam_visualization_profile.md)。
 
 1. 长运行前创建独立 `RUN-*`；标量→`metrics.json`，series→`series/`，正式图→`plots/`，日志→`logs/`。
-2. baseline/candidate 保持相同数据、对齐、时间和指标定义。
-3. 图不是 Agent 临时想出来的产物：优先由项目 `analysis_profile.yaml` 和 Observation Contract 稳定生成；特殊研究假设才允许增加临时 `08_hypothesis/` 图。
-4. 使用项目级 `analyze_run.py` 生成 `report/index.html` 和 `analysis_summary.json`，让人工阅读顺序固定为现象 → earliest abnormal layer → mechanism → runtime → Decision。
+2. baseline/candidate 保持相同 bag、参数加载方式、时间和指标定义。
+3. 图不是 Agent 临时想出来的产物：优先由项目 `analysis_profile.yaml` 和 Observation Contract 稳定生成。
+4. 使用项目级 `analyze_run.py` 生成 `report/index.html` 和 `analysis_summary.json`。
 5. `ready_for_human_review: true` 只代表 required evidence 齐全，不代表算法正确或可上线。
 6. 正式结果可以用 `result_bundle.py validate RUN_DIR --closure --human-analysis` 同时检查结构闭环和人工分析入口。
 
