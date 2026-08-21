@@ -1,22 +1,31 @@
-# ROS 快速调试
+# ROS Noetic 快速调试
 
 ## 何时读取
 
 只在 `standard` 或 `domain` 调试中读取。`micro` 问题直接处理，不加载本文件。
+
+## 先确认版本
+
+任何命令或补丁前先确认：
+
+```bash
+printenv ROS_VERSION ROS_DISTRO
+rosversion -d
+```
+
+本文件仅适用于 `ROS_VERSION=1`、`ROS_DISTRO=noetic`。
 
 ## 紧凑状态
 
 任务中只维护五行以内：
 
 ```text
-环境: ROS 2 Humble / Ubuntu 22.04 / CycloneDDS
+环境: ROS Noetic / Ubuntu 20.04 / catkin
 范围: localization_bringup -> imu_filter
 现象: /imu/data 有发布，滤波节点无输出
-首要假设: 订阅 QoS 不兼容
-下一检查: 比较端点 QoS
+首要假设: callback 阻塞或 TF/time gate 丢弃
+下一检查: rostopic info + rosnode info + 时间戳/TF
 ```
-
-信息确认后更新，不复述历史。
 
 ## 故障分层
 
@@ -24,59 +33,74 @@
 
 | 层 | 典型现象 | 首选证据 |
 |---|---|---|
-| 构建 | 包、符号、接口或依赖错误 | 第一个真实错误、package/CMake、overlay |
-| 启动/配置 | 节点未启动、参数不生效 | launch 展开、实际参数、namespace/remap |
-| 图连接 | 节点存在但端点不匹配 | node/topic/service/action info |
-| 通信 | 有端点但无数据或丢数据 | 类型、QoS、RMW、网络、频率 |
-| TF/时间 | extrapolation、跳变、不同步 | frame 树、stamp、clock、缓存窗口 |
-| 调度/资源 | 延迟、卡死、掉帧 | executor、callback group、阻塞、队列、CPU |
+| catkin 构建 | package、符号、消息生成或依赖错误 | 第一个真实错误、package.xml/CMakeLists、workspace overlay |
+| roslaunch/配置 | 节点未启动、参数不生效 | launch XML、arg/include、namespace/remap、rosparam |
+| ROS master/图连接 | 节点/topic/service 注册异常 | `rosnode list/info`、`rostopic info`、`rosservice info`、`roswtf` |
+| 通信 | 有端点但无数据 | 类型/MD5、TCPROS/UDPROS、网络、频率、callback |
+| TF/时间 | extrapolation、跳变、不同步 | frame tree、stamp、缓存窗口、系统时钟 |
+| 线程/资源 | 延迟、卡死、掉帧 | spinner、callback queue、锁、I/O、CPU/内存 |
 | 数据/算法 | 数值异常、漂移、发散 | 单位、frame、输入分布、边界和不变量 |
 
 上层未证明正常时，不直接调算法参数。
 
 ## 假设与检查
 
-最多保留三个活动假设：最可能、次可能、低概率高风险。优先级参考：
+最多保留三个活动假设：最可能、次可能、低概率高风险。优先检查能一次区分多个假设的证据。
 
-```text
-价值 = 区分能力 × 根因概率 ÷ 检查成本
-```
-
-每个命令必须确认或排除至少一个假设；不能说明信息增益的命令不执行。
-
-最多询问一个会改变调试方向的关键问题。能从代码、日志或合理假设继续时，不把调试变成问卷。
+每个命令必须确认或排除至少一个假设。最多询问一个会改变调试方向的关键问题。
 
 ## 高频检查
 
-### 构建
+### catkin 构建
 
 - 只处理第一个真实错误，后续通常是级联；
-- 核对 source/build/install overlay 和重新 source；
-- 接口生成核对 `rosidl_generate_interfaces`、导出和目标链接。
+- 核对 `source /opt/ros/noetic/setup.bash` 与 workspace `devel/setup.bash` 顺序；
+- 区分 `catkin_make`、`catkin build`、isolated workspace；
+- 自定义消息核对 `message_generation` / `message_runtime`、`add_message_files`、`generate_messages`、`catkin_package`；
+- C++ 链接核对 `target_link_libraries`、`catkin_LIBRARIES`、导出依赖。
 
-### 启动与参数
+### roslaunch 与参数
 
-- 核对最终节点名、namespace、remap 和接口名；
-- 核对参数声明、类型、节点路径和实际加载值；
-- lifecycle 节点核对状态，进程存在不等于 active。
+- 核对 `<arg>`、`<include>`、`<group ns>`、`<remap>`；
+- 核对最终 node 名和 namespace；
+- 核对 private 参数 `~param` 与 NodeHandle namespace；
+- 用 `rosparam get` 验证实际加载值；
+- 进程存在不等于节点逻辑已健康，查看 node 日志和 diagnostics。
 
-### 通信
+### ROS master 与通信
 
-- 先比较类型和端点 QoS，再怀疑 DDS；
-- 传感器流重点看 reliability、durability、history、depth、deadline；
-- 多机先看 domain ID、RMW、发现机制和防火墙。
+```bash
+rosnode list
+rosnode info /node
+rostopic list
+rostopic info /topic
+rostopic type /topic
+rostopic hz /topic
+rostopic bw /topic
+rosservice list
+rosservice info /service
+roswtf
+```
+
+重点核对：名称/remap、消息类型和 MD5、多机 `ROS_MASTER_URI`/`ROS_IP`/`ROS_HOSTNAME`、DNS/hosts、网络可达性。
+
+Noetic 不使用 ROS 2 QoS compatibility 作为诊断模型。
 
 ### TF 与时间
 
 - 明确变换方向和查询时刻；
-- 核对 stamp 是硬件采样、接收、系统时钟、ROS time 还是 `/clock`；
-- 区分不存在、太旧、来自未来和外参方向错误。
+- 核对 header stamp 是硬件采样、接收还是系统时间；
+- 区分 transform 不存在、太旧、来自未来和外参方向错误；
+- 多机必须检查系统时钟同步；
+- bag 回放时检查 `/clock` 与 `use_sim_time`。
 
-### 并发与性能
+### 线程与性能
 
-- 查回调中的磁盘、网络、service、sleep、锁和重计算；
-- 检查 callback group 是否把互相依赖的回调串死；
-- 检查队列积压、无界增长和跨进程重复复制。
+- roscpp 明确 `ros::spin()`、`AsyncSpinner`、`MultiThreadedSpinner` 和 callback queue；
+- rospy 检查长回调、阻塞 I/O、GIL 和共享状态；
+- 查 callback 中磁盘、网络、同步 service、sleep、锁和重计算；
+- 检查队列积压、无界缓存和大消息复制；
+- nodelet 链路核对是否真的在同一个 manager。
 
 ### 算法
 
@@ -90,6 +114,6 @@
 
 ## 修改、验证与停止
 
-修改前用一句话说明补丁验证什么根因。修改后先做最小验证：单目标构建、单元测试、单 launch、短时 topic/TF/参数检查或同一 bag 前后对比。
+修改前用一句话说明补丁验证什么根因。修改后先做最小验证：单 package 构建、单元测试/rostest、单 launch、短时 topic/TF/参数检查或同一 rosbag1 前后对比。
 
 根因解释关键现象且同条件不再复现：停止。架构债务与当前故障无直接关系时，只列为后续建议。证据不足时，只提出下一项最有区分度的检查。
