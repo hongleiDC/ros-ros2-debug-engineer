@@ -1,54 +1,105 @@
-# ROS 发行版兼容与路由
+# ROS Noetic 发行版契约
 
-> 时效基线：2026-07-20。发行版状态会变化；执行安装、迁移或 CI 决策前，重新核对 ROS 官方发行页面。
+本分支只服务 ROS 1 Noetic，不承担 ROS 2 distro routing。
 
-## 目录
+## 环境契约
 
-- [先识别目标环境](#先识别目标环境)
-- [发行版决策](#发行版决策)
-- [功能与命令分流](#功能与命令分流)
-- [ROS-1-与桥接](#ros-1-与桥接)
-- [证据要求](#证据要求)
-
-## 先识别目标环境
-
-在给出命令或补丁前，记录 `ROS_VERSION`、`ROS_DISTRO`、操作系统、架构、RMW、安装方式、overlay 顺序和目标部署镜像。环境未识别时，不得默认把 Rolling 或最新 LTS 的 API 套用到旧发行版。
-
-优先使用实际环境证据：
+开始分析、修改或运行时诊断前确认：
 
 ```bash
-printenv ROS_VERSION ROS_DISTRO RMW_IMPLEMENTATION
-ros2 doctor --report
-python3 scripts/preflight.py --require ros-runtime
+printenv ROS_VERSION ROS_DISTRO
+rosversion -d
 ```
 
-## 发行版决策
+必须满足：
 
-- 新的长期维护项目：先评估 Lyrical Luth。它于 2026 年 5 月发布，LTS 支持期到 2031 年 5 月。
-- 已部署 Jazzy、Humble、Kilted 等版本：以项目锁定版本和官方支持期为准，不为追新而隐式迁移。
-- Rolling：只用于明确接受滚动 API/ABI 变化的开发与前瞻验证，不把 Rolling 命令当成稳定版通用命令。
-- Windows：ROS 2 支持 Windows；当前 Rolling 安装目标是 Windows 11。脚本和路径处理不得默认存在 `fcntl`、POSIX shell 或 Linux 设备文件。
+```text
+ROS_VERSION=1
+ROS_DISTRO=noetic
+noetic
+```
 
-官方入口：
+默认平台基线：Ubuntu 20.04 + ROS Noetic + Python 3 + catkin。
 
-- [ROS 2 releases](https://docs.ros.org/en/rolling/Releases.html)
-- [Lyrical Luth release](https://docs.ros.org/en/kilted/Releases/Release-Lyrical-Luth.html)
-- [ROS 2 installation platforms](https://docs.ros.org/en/rolling/Installation.html)
+若任一项不匹配：
 
-## 功能与命令分流
+1. 停止套用本分支命令/API；
+2. 报告实际环境；
+3. 不自动切换到 ROS 2 或其他 ROS 1 发行版语义；
+4. 只有用户明确要求迁移/对比时，才读取迁移参考。
 
-1. 先在目标发行版的官方文档中确认包和 CLI 参数存在，再执行。
-2. 对发行版敏感的 executor、lifecycle、launch、rosbag2、QoS override 和安全功能，记录“最低已验证发行版”。
-3. Lyrical 新增的 `EventsCBGExecutor` 和 `rclpy` AsyncNode 等能力不得写入面向旧发行版的公共代码路径，除非有版本门控、替代实现和对应 CI。
-4. CLI 返回“unknown option”时，将其记为兼容性证据，不改写为运行时故障。
-5. 跨发行版补丁至少覆盖：构建清单、API 分支、参数/launch 语义、消息接口、bag 存储插件和回归测试。
+## EOL 约束
 
-## ROS 1 与桥接
+ROS Noetic 已于 2025-05 结束官方支持。涉及安装、升级、生产部署和安全时，必须记录：
 
-ROS 1 Noetic 已于 2025 年 5 月结束官方支持。处理 ROS 1 时明确标注 EOL 风险、操作系统约束和依赖来源。`ros1_bridge` 不是任意 ROS 1/ROS 2 组合的透明兼容层；先核对官方支持矩阵、接口生成条件和桥接类型，再设计迁移窗口。
+- OS/镜像是否冻结；
+- apt/第三方仓库来源；
+- 关键依赖是否还能重现安装；
+- 安全更新与漏洞修复策略；
+- 是否需要容器/离线镜像归档；
+- 迁移到受支持 ROS 2 发行版的窗口和回滚计划。
 
-参考 [ROS1/ROS2 迁移](ros1_ros2_migration.md) 获取迁移证据清单。
+不要把“能运行”描述为“仍受官方支持”。
+
+## Noetic 工具链
+
+默认使用：
+
+- catkin / catkin_make / catkin_tools；
+- roscore / ROS master / XML-RPC；
+- roslaunch XML；
+- rostopic / rosnode / rosservice / rosparam；
+- actionlib；
+- nodelet / pluginlib；
+- dynamic_reconfigure；
+- tf / tf2_ros；
+- rosbag1；
+- rospy / roscpp。
+
+默认排除：
+
+- `ros2 ...` CLI；
+- DDS/RMW/QoS compatibility；
+- lifecycle、component container；
+- executor/callback group；
+- rosbag2；
+- ament/colcon。
+
+## Overlay 与环境证据
+
+Noetic 中很多“包找不到/链接错版本/消息不一致”来自 workspace overlay，而不是源码逻辑。至少记录：
+
+```bash
+echo "$ROS_PACKAGE_PATH"
+echo "$CMAKE_PREFIX_PATH"
+which roscore
+which roslaunch
+rospack find <pkg>
+```
+
+如果使用 catkin_tools，再记录 profile、workspace 和 devel/install space。
+
+## 多机约束
+
+多机调试至少记录：
+
+```bash
+echo "$ROS_MASTER_URI"
+echo "$ROS_IP"
+echo "$ROS_HOSTNAME"
+host <peer-hostname>
+```
+
+Master 可注册不代表 TCPROS 数据路径可回连；容器、VPN、NAT、防火墙和错误 hostname 都可能造成“rosnode/rostopic 可见但数据不通”。
 
 ## 证据要求
 
-交付时给出：目标发行版、官方文档链接、实际命令输出、已验证平台、未覆盖版本和回滚方案。仅在一个发行版通过的结果，不得描述为“ROS 2 通用兼容”。
+交付时至少明确：
+
+- 目标确实是 Noetic；
+- 实际 OS/容器镜像；
+- catkin workspace 与 overlay；
+- 单机/多机网络环境；
+- 已验证命令/测试；
+- EOL 风险和未覆盖依赖；
+- 如有变更，给出回滚方法。

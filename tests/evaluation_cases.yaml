@@ -1,47 +1,116 @@
-schema_version: 1
-purpose: Manual behavior regression cases for architecture quality, token efficiency, evidence closure, and AI-independent analysis design.
+schema_version: 2
+purpose: Manual behavior regression cases for the ROS 1 Noetic branch: version lock, catkin/roslaunch semantics, ROS master/network diagnosis, TF/time, rosbag1, nodelet/actionlib, token efficiency, and evidence closure.
 cases:
-  - id: micro-cmake-error
-    prompt: Explain this single CMake target_link_libraries error and provide the smallest fix.
+  - id: noetic-version-lock
+    prompt: I sourced ROS 2 Humble, but use this Noetic Skill to debug my workspace.
+    expected_mode: debug
+    expected_scale: micro
+    max_references: 0
+    max_hypotheses: 0
+    forbidden: [continue with Noetic assumptions, ros2 QoS diagnosis, silent distro switching]
+    required: [environment mismatch, stop Noetic-specific commands, request or detect correct environment]
+
+  - id: micro-catkin-link-error
+    prompt: A ROS Noetic package fails at target_link_libraries after I added one C++ source file. Explain the first real error and give the smallest catkin fix.
     expected_mode: debug
     expected_scale: micro
     max_references: 0
     max_hypotheses: 1
-    forbidden: [repository-wide scan, GOAL, FORM, MAP, REAS, AUD, result bundle]
-    required: [root cause, minimal patch, focused validation]
-  - id: standard-no-messages
-    prompt: The ROS 2 publisher and subscriber both exist but the callback receives no messages.
+    forbidden: [repository-wide scan, ament, colcon, QoS, DDS, unrelated refactor]
+    required: [first real build error, catkin/CMake dependency or link reasoning, minimal patch, focused package validation]
+
+  - id: standard-topic-visible-no-data
+    prompt: In ROS Noetic, the publisher and subscriber are both visible in rostopic info, but the subscriber callback receives no messages.
     expected_mode: debug
     expected_scale: standard
     max_references: 1
     max_hypotheses: 3
-    forbidden: [full repository scan, unrelated refactor]
-    required: [message type, endpoint QoS, namespace or remap]
-  - id: architect-human-analyzable-lio
-    prompt: Design a LiDAR-IMU-RTK localization subsystem that our engineers can diagnose from saved results even when ChatGPT is unavailable.
+    forbidden: [DDS, RMW, QoS compatibility, lifecycle, executor]
+    required: [message type and MD5, publisher/subscriber connection evidence, queue or transport, application callback path, namespace/remap if relevant]
+
+  - id: noetic-master-uri-multimachine
+    prompt: Two Noetic computers can see the same ROS master, but topics from the robot do not reach the laptop.
+    expected_mode: debug
+    expected_scale: standard
+    max_references: 1
+    max_hypotheses: 3
+    forbidden: [ROS_DOMAIN_ID, DDS discovery, QoS]
+    required: [ROS_MASTER_URI, ROS_IP or ROS_HOSTNAME, hostname resolution, TCPROS return path, firewall/NAT/container evidence]
+
+  - id: noetic-message-md5-mismatch
+    prompt: A Noetic node reports that a topic datatype matches by name but the connection is dropped because the MD5 sum differs.
+    expected_mode: debug
+    expected_scale: standard
+    max_references: 1
+    max_hypotheses: 3
+    forbidden: [QoS tuning, DDS vendor changes]
+    required: [custom message definition provenance, overlay/source order, generated message artifacts, rebuild and re-source, bag compatibility risk]
+
+  - id: noetic-private-param-namespace
+    prompt: My Noetic node reads the default value even though the launch file loads the YAML parameter.
+    expected_mode: debug
+    expected_scale: standard
+    max_references: 1
+    max_hypotheses: 3
+    forbidden: [ROS 2 parameter declaration, lifecycle parameter callbacks]
+    required: [global vs private NodeHandle or rospy namespace, rosparam get evidence, launch namespace, parameter key path]
+
+  - id: noetic-nodelet-plugin-load
+    prompt: A point-cloud nodelet fails to load into the Noetic nodelet manager after I changed package dependencies.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 2
+    max_hypotheses: 3
+    forbidden: [ROS 2 component container, rclcpp_components]
+    required: [plugin.xml/export, pluginlib class name, shared library path, package.xml/CMake dependencies, manager process evidence]
+
+  - id: noetic-asyncspinner-deadlock
+    prompt: My Noetic roscpp node freezes when one callback calls a service and waits for the result while sensor callbacks are active.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 2
+    max_hypotheses: 3
+    forbidden: [ROS 2 callback group, executor type]
+    required: [spinner type, callback queue, blocking wait, lock order, minimal concurrency fix, focused reproduction]
+
+  - id: noetic-rosbag-clock
+    prompt: A Noetic SLAM node works live but fails during rosbag play when use_sim_time is enabled.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 2
+    max_hypotheses: 3
+    forbidden: [rosbag2, MCAP storage plugin, QoS override]
+    required: [/use_sim_time, /clock, rosbag play --clock, header stamps, time reset or loop behavior, TF cache timing]
+
+  - id: noetic-tf-extrapolation
+    prompt: A Noetic localization node throws TF extrapolation into the future only under load.
+    expected_mode: debug
+    expected_scale: domain
+    max_references: 2
+    max_hypotheses: 3
+    forbidden: [DDS latency diagnosis as default]
+    required: [query time, transform stamp, producer delay, queue backlog, clock basis, TF buffer window]
+
+  - id: architect-noetic-human-analyzable-lio
+    prompt: Design a ROS Noetic LiDAR-IMU-RTK localization subsystem that our engineers can diagnose from saved rosbag1 runs even when ChatGPT is unavailable.
     expected_mode: architect
     expected_scale: subsystem
     max_hypotheses: 0
-    forbidden: [AI-only analysis workflow, ad-hoc per-run plotting, telemetry without semantics]
-    required: [Algorithm Contract, Observation Contract, Result Contract, Visualization Contract, Human Analysis Contract, stable units and frames, project-local static report]
-  - id: runtime-ab-result-bundle
-    prompt: Compare baseline and candidate localization configs on the same bag and leave a result that another engineer can inspect later without AI.
+    forbidden: [ROS 2 component/lifecycle/executor architecture, AI-only analysis workflow, ad-hoc per-run plotting, telemetry without semantics]
+    required: [package/node/nodelet boundaries, topic/service/action choices, TF and time semantics, queue/transport choices, Algorithm Contract, Observation Contract, Result Contract, Visualization Contract, Human Analysis Contract]
+
+  - id: runtime-ab-result-bundle-noetic
+    prompt: Compare baseline and candidate Noetic localization configs on the same rosbag1 and leave a result another engineer can inspect later without AI.
     expected_mode: debug
     expected_scale: domain
     max_hypotheses: 3
-    forbidden: [scattered top-level temp files, generic dashboard platform, AI-only verdict]
-    required: [RUN result bundle, normalized metrics, baseline candidate comparison, static human report, repeatable analysis profile]
-  - id: slam-longitudinal-root-cause
-    prompt: Bag2-1 develops a longitudinal error. Design the evidence path so a human can determine whether prediction, scan update, observability, or map feedback fails first.
-    expected_mode: debug
-    expected_scale: domain
-    max_hypotheses: 3
-    forbidden: [plotting every telemetry field, research-only production pollution, depending on Agent interpretation for basic navigation]
-    required: [Core Evidence, Observation Contract, shared time or distance axis, prediction evidence, matching correction, observability evidence, fixed reading order, static index.html]
-  - id: audit-controller-deployment
-    prompt: Audit and modify a controller timing compensation implementation before hardware deployment.
+    forbidden: [rosbag2, scattered top-level temp files, generic dashboard platform, AI-only verdict]
+    required: [same bag and rosparam/launch loading path, RUN result bundle, normalized metrics, baseline candidate comparison, static human report, repeatable analysis profile]
+
+  - id: audit-noetic-controller-deployment
+    prompt: Audit and modify a ROS Noetic controller timing compensation implementation before hardware deployment.
     expected_mode: audit
     expected_scale: high-risk-change
     max_hypotheses: 3
     forbidden: [claiming safety from static review alone]
-    required: [success criteria, formula mapping, experiment evidence, result closure, rollback]
+    required: [Noetic environment lock, success criteria, formula mapping, timing evidence, experiment closure, rollback, EOL risk]
