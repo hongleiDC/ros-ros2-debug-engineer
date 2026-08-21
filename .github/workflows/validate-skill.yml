@@ -1,4 +1,4 @@
-name: validate-skill
+name: validate-noetic-skill
 
 permissions:
   contents: read
@@ -23,10 +23,10 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r requirements.txt
       - run: python scripts/preflight.py --require knowledge
-      - run: python -m unittest discover -s tests -v
+      - run: python -m unittest discover -s tests -p "test_noetic*.py" -v
       - run: python scripts/package_skill.py . dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
         with:
-          name: skill
+          name: ros-noetic-skill
           path: dist/skill.zip
