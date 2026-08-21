@@ -1,10 +1,93 @@
-# ros-ros2-systems-engineer
+# ros-noetic-systems-engineer
 
-[![Validate Skill](https://github.com/hongleiDC/ros-ros2-systems-engineer/actions/workflows/validate-skill.yml/badge.svg?branch=main)](https://github.com/hongleiDC/ros-ros2-systems-engineer/actions/workflows/validate-skill.yml)
+> Branch: `ros1-noetic`
 
-ROS 1 / ROS 2 系统架构、调试、验证与**可独立分析设计** Skill。
+这是 `ros-ros2-systems-engineer` 的 **ROS 1 Noetic 专用 Skill 分支**。它不再尝试同时兼容 ROS 1 与 ROS 2，而是把运行时模型、命令、构建系统和诊断术语锁定到 ROS Noetic。
 
-核心定位已经从“Agent 帮你多做实验分析”调整为：**Agent 在设计阶段把系统做成天然可观察、可复核、没有 AI 也能被工程师分析。**
+## 为什么单独建立 Noetic 分支
+
+同时兼容 ROS 1 / ROS 2 会让 Skill 在实际项目中缺少明确的版本语义，例如：
+
+- ROS 1 Noetic 使用 ROS master/XML-RPC/TCPROS，而不是 DDS/RMW；
+- 使用 catkin，而不是 ament/colcon；
+- 使用 roslaunch XML，而不是 ROS 2 launch；
+- 使用 rosbag1，而不是 rosbag2；
+- roscpp 使用 spinner/callback queue，而不是 ROS 2 executor/callback group；
+- Noetic 没有 ROS 2 QoS compatibility、lifecycle node、component container 等运行时概念。
+
+因此这个分支的第一原则是：**先确认版本，再分析系统。**
+
+```bash
+printenv ROS_VERSION ROS_DISTRO
+rosversion -d
+```
+
+期望：
+
+```text
+ROS_VERSION=1
+ROS_DISTRO=noetic
+noetic
+```
+
+环境不匹配时，Skill 应停止套用 Noetic 假设，而不是自动退回“通用 ROS”回答。
+
+## Skill 名称
+
+```text
+ros-noetic-systems-engineer
+```
+
+默认提示同样明确要求使用 Noetic 语义。
+
+## Noetic 技术基线
+
+本分支默认使用：
+
+- Ubuntu 20.04；
+- ROS 1 Noetic；
+- catkin / catkin_make / catkin_tools；
+- roscore / ROS master；
+- roslaunch XML；
+- rostopic / rosnode / rosservice / rosparam / roswtf；
+- TCPROS/UDPROS；
+- tf / tf2_ros；
+- rosbag1；
+- actionlib；
+- nodelet / pluginlib；
+- dynamic_reconfigure；
+- diagnostic_updater；
+- rospy / roscpp。
+
+ROS Noetic 已于 2025-05 结束官方支持，因此安装、系统依赖与生产部署任务必须明确考虑 EOL 风险。
+
+## 调试顺序
+
+```text
+catkin 构建
+→ roslaunch / 参数
+→ ROS master / graph
+→ topic / service / action
+→ TF / 时间
+→ spinner / callback queue / 资源
+→ 数据 / 算法
+```
+
+简单问题保持简单；默认只读；只读取足够区分当前假设的文件和运行时证据。
+
+## 运行时快照
+
+```bash
+python3 scripts/collect_runtime_snapshot.py --profile basic
+python3 scripts/collect_runtime_snapshot.py --profile communication
+python3 scripts/collect_runtime_snapshot.py --profile full --detail-limit 20
+```
+
+脚本现在会检查 `ROS_VERSION=1`、`ROS_DISTRO=noetic` 和 `rosversion -d`。环境不匹配时默认退出，不再静默切换到 ROS 2。
+
+## 长期算法与结果分析
+
+定位、SLAM、LIO、VIO、融合等长期算法仍保留项目级 Observation / Result / Visualization / Human Analysis Contract：
 
 ```text
 Algorithm Contract
@@ -14,61 +97,24 @@ Algorithm Contract
 → Human Analysis Contract
 ```
 
-对定位、SLAM、LIO、VIO、融合等长期算法项目，推荐一次性初始化项目本地分析能力：
+一次性初始化：
 
 ```bash
 python3 scripts/bootstrap_analysis_tooling.py PROJECT_ROOT --system lio
 ```
 
-它会安装：
-
-```text
-PROJECT_ROOT/
-├── analysis/
-│   ├── observation_contract.yaml
-│   ├── analysis_profile.yaml
-│   └── README.md
-└── tools/analysis/
-    ├── analyze_run.py
-    ├── result_bundle.py
-    ├── plot_localization_result.py
-    ├── plot_slam_diagnostics.py
-    ├── compare_result_metrics.py
-    └── requirements.txt
-```
-
-系统设计阶段只需把 Observation Contract 和 Analysis Profile 定制正确。之后每次 RUN 使用固定入口：
+每次运行后：
 
 ```bash
 python3 tools/analysis/analyze_run.py RUN_DIR --strict
 ```
 
-生成：
+生成静态 `RUN_DIR/report/index.html`，保证没有 AI 时工程师仍可复核结果。
 
-```text
-RUN_DIR/report/
-├── index.html
-└── analysis_summary.json
-```
+## 分支策略
 
-工程师直接打开 `index.html`，按固定顺序阅读：Overall → Estimator → Frontend → Observability → Fusion → Loop/Map → Runtime → Decision。无需 ChatGPT、数据库或 Web 服务。
+- `main`：保留当前通用 ROS 1 / ROS 2 Skill；
+- `ros1-noetic`：ROS 1 Noetic 专用；
+- 后续可以继续按同一模式建立 ROS 2 发行版专用分支，例如 Humble、Jazzy 等。
 
-Result Bundle 仍保存 `manifest.yaml`、`metrics.json`、`series/`、`plots/`、`logs/` 和 `report.md`；静态 report 是其中面向人的正式阅读入口。
-
-设计原则：
-
-- 简单问题简单解决；
-- 先设计 failure mode，再设计 observation；
-- 观测量的单位、frame、时间语义和解释长期稳定；
-- 图由项目契约稳定生成，而不是每次由 Agent 临时发明；
-- AI 是结果包的一个消费者，不是唯一分析器；
-- `ready_for_human_review` 只表示证据齐全，不代表算法正确；
-- 找到足够支持工程决策的证据后停止扩张 telemetry。
-
-验证：
-
-```bash
-python3 scripts/preflight.py --require knowledge
-python3 -m unittest discover -s tests -v
-python3 scripts/package_skill.py . dist
-```
+这样每个 Skill 都拥有明确的 API、CLI、构建系统、运行时与发行版边界，而不是让一个 Skill 在运行时猜版本。
