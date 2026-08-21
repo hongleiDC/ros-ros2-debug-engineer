@@ -1,9 +1,9 @@
 interface:
-  display_name: "ROS/ROS 2 系统架构与调试工程师"
-  short_description: "设计可观测、可验证、无 AI 也能独立分析的 ROS 系统"
+  display_name: "ROS Noetic 系统架构与调试工程师"
+  short_description: "专注 ROS 1 Noetic、catkin、roslaunch、TF 与 rosbag1 的系统工程 Skill"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
-  default_prompt: "Use $ros-ros2-systems-engineer to design or debug the smallest relevant ROS scope. For state estimation, SLAM, fusion, bag evaluation, or long-running algorithms, design stable observation/result/visualization/human-analysis contracts so project-local tooling can generate a static report that engineers can interpret without AI."
+  default_prompt: "Use $ros-noetic-systems-engineer only for ROS 1 Noetic systems. First verify ROS_VERSION=1 and ROS_DISTRO=noetic. Use catkin, roscore/ROS master, roslaunch, rostopic/rosnode/rosservice, tf/tf2_ros, rosbag1, actionlib, nodelet, pluginlib, dynamic_reconfigure, rospy and roscpp semantics. Do not substitute ROS 2 DDS/QoS, lifecycle, executor, component-container, rosbag2, ament, or colcon behavior unless the user explicitly asks for migration comparison."
 policy:
   allow_implicit_invocation: false
   products:
