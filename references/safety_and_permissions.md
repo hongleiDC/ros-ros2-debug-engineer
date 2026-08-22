@@ -39,7 +39,7 @@ rosbag info data.bag
 - remap 控制 topic；
 - 明确 topic 白名单。
 
-不要用 ROS 2 `ROS_DOMAIN_ID` 作为 Noetic 隔离手段。
+不要使用 ROS 2 的 domain-based isolation 语义作为 Noetic 隔离手段。
 
 同时明确：
 

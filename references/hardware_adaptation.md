@@ -16,6 +16,7 @@
 10. 时间同步
 11. 硬件到 ROS 的映射表
 12. 何时重新勘察
+13. 自动只读勘察
 
 ## 1. 勘察循环
 
@@ -263,3 +264,16 @@ rosparam get /use_sim_time
 - bag 换成另一辆车/另一套硬件采集的数据。
 
 每次刷新都把新证据与旧证据比较，指出 **changed / unchanged / unknown**，而不是重新堆一份无差别命令输出。
+
+## 13. 自动只读勘察
+
+需要一次性获取 Linux/设备/网卡/Noetic 基线时优先运行：
+
+```bash
+python3 scripts/inspect_system_hardware.py
+python3 scripts/inspect_system_hardware.py --device /dev/ttyUSB0 --interface eth0
+```
+
+该脚本只运行读取类命令，并记录缺失工具，不自动安装软件。它会识别串口、`/dev/serial/by-id`、video device、Ethernet/Wi-Fi/CAN interface，并可对指定设备读取 udev/权限、对指定网卡读取 link 信息。
+
+脚本给出的 `hardware_candidates` 只是 **transport candidate**，不是传感器型号证明。最终仍要闭合：driver package/version、固件、port/IP/baud/bitrate、ROS topic/type/rate、frame、timestamp source、units、intrinsic/extrinsic/lever arm 等证据。未知项写 `unknown/未验证`。
