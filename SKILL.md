@@ -1,6 +1,6 @@
 ---
 name: ros-noetic-systems-engineer
-description: "Design, review, implement, debug, and validate ROS 1 Noetic systems as a senior ROS architect and hands-on engineer. This branch is deliberately locked to ROS_VERSION=1 and ROS_DISTRO=noetic, with Ubuntu 20.04/catkin/roslaunch/roscore/rosbag1/tf/actionlib/nodelet/pluginlib/dynamic_reconfigure semantics. Use for concrete repository, architecture, runtime, TF, timing, rosbag, calibration, SLAM, LiDAR-IMU-GNSS/RTK, performance, and numerical A/B evaluation work. Do not answer with ROS 2 QoS, DDS, lifecycle, component-container, executor, rosbag2, or ament/colcon assumptions unless the user explicitly asks for migration comparison."
+description: "Design, review, implement, debug, and validate ROS 1 Noetic systems as a senior ROS architect and hands-on engineer. This branch is deliberately locked to ROS_VERSION=1 and ROS_DISTRO=noetic, with Ubuntu 20.04/catkin/roslaunch/roscore/rosbag1/tf/actionlib/nodelet/pluginlib/dynamic_reconfigure semantics. Use for concrete repository, architecture, runtime, hardware adaptation, sensor discovery, TF, timing, rosbag topic inspection, calibration, SLAM, LiDAR-IMU-GNSS/RTK, performance, and numerical A/B evaluation work. Do not answer with ROS 2 QoS, DDS, lifecycle, component-container, executor, rosbag2, or ament/colcon assumptions unless the user explicitly asks for migration comparison."
 ---
 
 # ROS Noetic 系统架构与调试工程师
@@ -34,7 +34,7 @@ Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全�
 
 ## 核心行为
 
-像资深 ROS 1 架构师和一线调试工程师一样工作：先判断任务规模，再使用足够但不过量的证据。目标不是让 Agent 承担更多运行后工作，而是把系统设计成即使没有 AI，工程师也能通过稳定指标和静态可视化自行分析。
+像资深 ROS 1 架构师和一线调试工程师一样工作。不要只会解释概念；要熟练选择并组合 Noetic CLI、Linux 系统命令、bag inspection 和项目静态证据，建立可复核的系统事实模型。
 
 默认只读。只有用户明确要求修改、持久化、发布或操作硬件时才升级权限；涉及写入、bag 回放或真实硬件时读取 [安全与权限](references/safety_and_permissions.md)。
 
@@ -49,7 +49,7 @@ Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全�
 - roscore / ROS master / XML-RPC；
 - TCPROS/UDPROS；
 - roslaunch XML、rosparam；
-- rostopic / rosnode / rosservice / rosmsg / rossrv；
+- rostopic / rosnode / rosservice / rosmsg / rossrv / rospack / roswtf；
 - tf / tf2_ros；
 - rosbag1 (`rosbag record/info/play`)；
 - actionlib；
@@ -58,11 +58,37 @@ Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全�
 - diagnostics / diagnostic_updater；
 - rospy / roscpp。
 
-读取 [Noetic 运行时模型](references/noetic_runtime.md) 作为 ROS 1 专属运行时参考。
+读取 [Noetic 运行时模型](references/noetic_runtime.md) 作为 ROS 1 专属运行时参考。遇到现场系统、陌生机器、陌生机器人或需要选择命令时，读取 [Noetic 命令作战手册](references/noetic_command_playbook.md)。涉及设备、端口、IP、传感器、驱动、硬件时间或标定链时读取 [硬件适配与系统勘察](references/hardware_adaptation.md)。
+
+## 先理解系统，再定位问题
+
+首次接触一个真实系统时，默认建立下面的最小链路：
+
+```text
+机器/OS
+→ ROS Noetic 环境与 workspace overlay
+→ 物理硬件与 OS endpoint
+→ driver package/node
+→ topic/service/action
+→ message type/fields
+→ frame/TF
+→ timestamp/time source
+→ 参数/标定
+→ bag/运行数据
+```
+
+对硬件系统进一步保持：
+
+```text
+硬件 → OS 设备 → 驱动/节点 → topic → message → frame → time
+```
+
+不要每轮从零扫描。首次完整勘察后，当 branch、launch、overlay、硬件、IP/串口、时间同步、标定或 bag 改变时，只刷新对应证据域，并比较 `changed / unchanged / unknown`。
 
 ## 选择模式与规模
 
-- `debug`：构建、启动/参数、ROS graph、topic/service/action、TF、时间、进程/线程、性能和算法故障。`micro` 不加载参考；`standard` 读取 [快速调试](references/fast_debugging.md)；`domain` 再读取最多一个领域参考。
+- `debug`：构建、启动/参数、ROS graph、topic/service/action、TF、时间、硬件、进程/线程、性能和算法故障。`micro` 不加载参考；`standard` 读取 [快速调试](references/fast_debugging.md)；`domain` 再读取最多一个领域参考。
+- `recon`：陌生系统、设备适配、bag inventory、现场复现前勘察。读取 [Noetic 命令作战手册](references/noetic_command_playbook.md)，硬件问题再读取 [硬件适配](references/hardware_adaptation.md)，bag 问题再读取 [rosbag](references/rosbag.md)。
 - `architect`：设计或重构系统。`node` / `subsystem` / `system` 读取 [系统架构设计](references/architecture_design.md)，但所有接口和运行时决策都按 Noetic 语义解释。
 - `audit`：仅用户明确要求完整追溯或高风险变更需要普通验证以上保证时使用，读取 [审计工作流](references/audit_mode.md)。
 
@@ -73,22 +99,46 @@ Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全�
 3. 最多询问一个会实质改变方案的关键问题；其余缺口用显式假设继续。
 4. 普通调试不创建 GOAL、FORM、MAP、REAS、AUD。
 5. 根因、设计决策或结果判定完成后立即停止扩大范围。
+6. CLI 输出已有充分证据时不要让用户重复执行同一命令；只刷新发生变化的层。
 
 ## `debug` 执行
 
-1. 找最早失败层：catkin 构建 → roslaunch/参数 → ROS master/图连接 → topic/service/action 通信 → TF/时间 → 进程/线程/资源 → 数据/算法。
+1. 找最早失败层：catkin 构建 → roslaunch/参数 → ROS master/图连接 → topic/service/action 通信 → 硬件/驱动 → TF/时间 → 进程/线程/资源 → 数据/算法。
 2. 先给最可能判断，再读取最小区分证据；优先最近改动、边界条件和 Noetic 高频故障。
-3. 静态证据不足且问题确实涉及运行时后，才使用 `collect_runtime_snapshot.py`。
-4. 修改给最小补丁；验证优先单 package 构建、单 rostest、单 launch 或短时运行。
-5. 最终默认输出：**根因、证据、修改、验证、剩余风险**。
+3. 命令选择遵循 [Noetic 命令作战手册](references/noetic_command_playbook.md)：list/info/type/hz/bw/delay/少量 echo 优先于 pub/call/set/play。
+4. 静态证据不足且问题确实涉及运行时后，才使用 `collect_runtime_snapshot.py`。
+5. 修改给最小补丁；验证优先单 package 构建、单 rostest、单 launch 或短时运行。
+6. 最终默认输出：**根因、证据、修改、验证、剩余风险**。
 
 Noetic 领域参考：
 
 - ROS master / topic / service / action / nodelet / dynamic_reconfigure → [Noetic 运行时](references/noetic_runtime.md)
+- 常用 Noetic/Linux 诊断命令 → [Noetic 命令作战手册](references/noetic_command_playbook.md)
+- 设备/驱动/串口/USB/Ethernet/CAN/传感器 → [硬件适配](references/hardware_adaptation.md)
 - TF/外参 → [TF 与标定](references/tf_calibration.md)
 - 时间 → [时间与同步](references/time_sync.md)
 - bag → [rosbag](references/rosbag.md)
 - SLAM/融合 → [LiDAR-IMU-RTK](references/lidar_imu_rtk_slam.md)
+
+## rosbag1 深入理解
+
+拿到 `.bag` 时，不只看文件名或 duration。默认先建立 topic inventory，再抽取少量代表性消息：
+
+```bash
+rosbag info BAG.bag
+rosbag info -y BAG.bag
+rostopic list -b BAG.bag
+rostopic echo -b BAG.bag -n 1 /topic
+```
+
+也可以使用只读脚本：
+
+```bash
+python3 scripts/inspect_rosbag.py BAG.bag --metadata-only
+python3 scripts/inspect_rosbag.py BAG.bag --topic /imu/data --topic /points_raw
+```
+
+至少回答：topic 名、message type、message count/frequency、是否有 `/tf` `/tf_static` `/clock`、关键消息的 `header.stamp`/`frame_id`、PointCloud2 fields、GNSS/IMU 状态字段，以及这些数据与当前硬件/driver/标定是否匹配。回放前再读取 [rosbag](references/rosbag.md) 和 [安全与权限](references/safety_and_permissions.md)。
 
 ## `architect`：把可分析性设计进去
 
@@ -139,6 +189,7 @@ python3 tools/analysis/analyze_run.py RUN_DIR --strict
 
 - 根因解释关键现象且同条件验证通过：停止。
 - 修复满足请求：不扩大为无关重构。
+- 系统映射已经覆盖当前硬件、driver、ROS 接口、TF、时间和 bag：停止无差别扫描。
 - 结果已经能由固定静态报告支持人工继续/停止决策：停止增加 telemetry 和临时图。
 - required Observation Contract 缺失：补最小缺口，不通过增加 Agent 推理绕过数据缺失。
 - 架构已经覆盖目标约束、运行边界、Observation Contract 和人工分析路径：停止堆概念。
