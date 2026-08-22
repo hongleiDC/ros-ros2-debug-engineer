@@ -18,10 +18,13 @@ class NoeticReferenceLeakageTest(unittest.TestCase):
             "lidar_imu_rtk_slam.md",
             "experiment_management.md",
             "result_management.md",
+            "project_understanding.md",
+            "testing_and_observability.md",
         ]
         forbidden = [
             "ROS_DOMAIN_ID",
             "RMW_IMPLEMENTATION",
+            "ROS_LOCALHOST_ONLY",
             "ros2 launch",
             "ros2 topic",
             "ros2 service",
@@ -30,6 +33,7 @@ class NoeticReferenceLeakageTest(unittest.TestCase):
             "rclcpp_components_register_nodes",
             ".launch.py",
             ".mcap",
+            ".db3",
         ]
         for name in reference_names:
             text = (ROOT / "references" / name).read_text(encoding="utf-8")
@@ -48,6 +52,8 @@ class NoeticReferenceLeakageTest(unittest.TestCase):
             "lidar_imu_rtk_slam.md": ["sensor_msgs/PointCloud2", "rosnode info", "rosbag1"],
             "experiment_management.md": ["data/run04.bag", "roslaunch my_pkg replay.launch"],
             "result_management.md": ["rosbag1", "ROS_PACKAGE_PATH", "roslaunch"],
+            "project_understanding.md": ["catkin", "ROS_MASTER_URI", "TCPROS", "CallbackQueue", "rosbag1"],
+            "testing_and_observability.md": ["rostest", "roslaunch", "rostopic hz", "ROS_MASTER_URI", ".bag"],
         }
         for name, tokens in required_by_file.items():
             text = (ROOT / "references" / name).read_text(encoding="utf-8")
@@ -63,6 +69,7 @@ class NoeticReferenceLeakageTest(unittest.TestCase):
         self.assertIn("foreign_ros2_signal", inspector)
         self.assertIn("ROS 1", migration)
         self.assertIn("ROS 2", migration)
+        self.assertFalse((ROOT / "references" / "ros2_runtime.md").exists())
 
 
 if __name__ == "__main__":

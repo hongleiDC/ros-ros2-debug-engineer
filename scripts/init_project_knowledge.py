@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize a validated project-owned ROS knowledge directory."""
+"""Initialize a validated project-owned ROS Noetic knowledge directory."""
 from __future__ import annotations
 
 import argparse
@@ -49,16 +49,21 @@ def main() -> int:
             (staging / name).mkdir()
         (staging / "README.md").write_text(
             f"# {args.project_id} project knowledge\n\n"
-            "This knowledge base stores project facts, goals, experiments, formulas, formula-to-code variable mappings, "
-            "stepwise reasoning chains, and logic audit reports. Verified conclusions must remain traceable to code, "
-            "formula versions, units, frames, time bases, tests, and evidence.\n",
+            "This knowledge base is locked to ROS 1 Noetic semantics. It stores project facts, goals, experiments, "
+            "formulas, formula-to-code variable mappings, stepwise reasoning chains, and logic audit reports. "
+            "The Noetic target is declared here, but the active runtime environment still requires direct verification. "
+            "Verified conclusions must remain traceable to code, formula versions, units, frames, time bases, tests, and evidence.\n",
             encoding="utf-8",
         )
         (staging / "project.yaml").write_text(dump({
             "schema_version": 1,
             "project_id": args.project_id,
             "status": "candidate",
-            "ros": {"families": [], "distributions": [], "build_tools": []},
+            "ros": {
+                "families": ["ros1"],
+                "distributions": ["noetic"],
+                "build_tools": ["catkin"],
+            },
             "repository": {"branch": "unknown", "commit": "unknown", "dirty": None},
             "evidence": [],
         }), encoding="utf-8")
@@ -67,7 +72,11 @@ def main() -> int:
             "status": "candidate",
             "generated_at": None,
             "repository": {},
-            "environment": {},
+            "environment": {
+                "target_ros_version": "1",
+                "target_ros_distro": "noetic",
+                "runtime_verified": False,
+            },
             "packages": [],
             "artifacts": {},
             "capabilities": {},
@@ -75,7 +84,10 @@ def main() -> int:
                 "understanding_level": "L0", "static_scan": False, "build_verified": False,
                 "runtime_snapshot": False, "reproduction": False, "regression_verified": False,
             },
-            "limitations": ["Project evidence has not been collected yet."],
+            "limitations": [
+                "Project evidence has not been collected yet.",
+                "ROS 1 Noetic is the target contract; the active shell/runtime has not been verified yet.",
+            ],
         }), encoding="utf-8")
         (staging / "active_configuration.yaml").write_text(dump({
             "schema_version": 1,
@@ -93,7 +105,7 @@ def main() -> int:
             "topic_time_sources": {}, "offsets": [],
         }), encoding="utf-8")
         (staging / "CHANGELOG.md").write_text(
-            f"# Knowledge Changelog\n\n## {date.today().isoformat()} - initialized\n",
+            f"# Knowledge Changelog\n\n## {date.today().isoformat()} - initialized for ROS 1 Noetic\n",
             encoding="utf-8",
         )
         schema_dir = Path(__file__).resolve().parents[1] / "references" / "schemas"
@@ -109,6 +121,7 @@ def main() -> int:
                 "schema_version": 1,
                 "project_id": args.project_id,
                 "knowledge_dir": relative.as_posix(),
+                "target": {"ros_version": "1", "ros_distro": "noetic"},
             }), encoding="utf-8")
         except Exception:
             shutil.rmtree(knowledge, ignore_errors=True)

@@ -98,19 +98,22 @@ properties:
     additionalProperties: true
   environment:
     type: object
-    required: [ros_version, ros_distro, rmw_implementation, operating_system, architecture]
+    required: [ros_version, ros_distro, ros_master_uri, operating_system, architecture]
     properties:
       ros_version: {type: [string, 'null']}
       ros_distro: {type: [string, 'null']}
-      rmw_implementation: {type: [string, 'null']}
-      ros_domain_id: {type: [string, 'null']}
+      ros_master_uri: {type: [string, 'null']}
+      ros_ip: {type: [string, 'null']}
+      ros_hostname: {type: [string, 'null']}
+      ros_package_path: {type: [string, 'null']}
+      cmake_prefix_path: {type: [string, 'null']}
+      pythonpath: {type: [string, 'null']}
       operating_system: {type: string}
       architecture: {type: string}
       container_image: {type: [string, 'null']}
       container_digest: {type: [string, 'null']}
-      middleware_config: {type: object}
       environment_variables: {type: object}
-    additionalProperties: true
+    additionalProperties: false
   dependencies:
     type: object
     required: [manifests, declared]

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Create and validate a compact, reproducible ROS experiment result bundle."""
+"""Create and validate a compact, reproducible ROS Noetic experiment result bundle."""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -16,6 +17,16 @@ import yaml
 REQUIRED_DIRS = ("series", "plots", "logs")
 REQUIRED_FILES = ("manifest.yaml", "metrics.json", "report.md")
 PLOT_SUFFIXES = {".png", ".svg", ".pdf"}
+NOETIC_ENV_NAMES = (
+    "ROS_VERSION",
+    "ROS_DISTRO",
+    "ROS_MASTER_URI",
+    "ROS_IP",
+    "ROS_HOSTNAME",
+    "ROS_PACKAGE_PATH",
+    "CMAKE_PREFIX_PATH",
+    "PYTHONPATH",
+)
 
 
 def utc_now() -> str:
@@ -50,6 +61,17 @@ def git_info(workspace: Path | None) -> dict[str, object]:
     branch = run_git(workspace, "rev-parse", "--abbrev-ref", "HEAD")
     status = run_git(workspace, "status", "--porcelain")
     return {"workspace": str(workspace.resolve()), "branch": branch, "commit": commit, "dirty": None if status is None else bool(status)}
+
+
+def noetic_environment() -> dict[str, object]:
+    return {
+        "target": {"ros_version": "1", "ros_distro": "noetic"},
+        "observed": {name: os.getenv(name) for name in NOETIC_ENV_NAMES},
+        "matches_target_if_known": (
+            os.getenv("ROS_VERSION") in (None, "", "1")
+            and os.getenv("ROS_DISTRO") in (None, "", "noetic")
+        ),
+    }
 
 
 def file_records(paths: Iterable[str]) -> list[dict[str, object]]:
@@ -94,6 +116,7 @@ def init_bundle(args: argparse.Namespace) -> int:
         "created_utc": utc_now(),
         "label": args.label,
         "git": git_info(workspace),
+        "environment": noetic_environment(),
         "inputs": {"datasets": file_records(args.dataset_file), "configs": file_records(args.config_file)},
         "command": args.command,
         "baseline_run": args.baseline_run,
@@ -169,6 +192,14 @@ def validate_bundle(args: argparse.Namespace) -> int:
     if metric_map is not None and not isinstance(metric_map, dict):
         errors.append("metrics.json metrics must be an object")
 
+    environment = manifest.get("environment")
+    if isinstance(environment, dict):
+        target = environment.get("target")
+        if isinstance(target, dict) and target != {"ros_version": "1", "ros_distro": "noetic"}:
+            errors.append("manifest environment target must be ROS 1 Noetic")
+        if environment.get("matches_target_if_known") is False:
+            warnings.append("captured ROS environment does not match the Noetic target contract")
+
     if args.closure:
         if manifest.get("status") != "completed":
             errors.append("closure requires manifest status: completed")
@@ -203,7 +234,7 @@ def validate_bundle(args: argparse.Namespace) -> int:
                 errors.append(f"invalid report/analysis_summary.json: {exc}")
 
     for path in run_dir.iterdir() if run_dir.is_dir() else []:
-        if path.is_file() and path.suffix.lower() in {".csv", ".log", ".bag", ".db3", ".mcap"}:
+        if path.is_file() and path.suffix.lower() in {".csv", ".log", ".bag"}:
             warnings.append(f"top-level raw artifact should live under series/ or logs/: {path.name}")
 
     result = {"run_dir": str(run_dir), "valid": not errors, "errors": errors, "warnings": warnings}

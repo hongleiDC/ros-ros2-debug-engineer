@@ -30,13 +30,15 @@ noetic
 - 不使用 rosbag2、MCAP storage plugin、ament/colcon 作为默认工具链；
 - 不把 ROS 2 参数、launch、service/action 语义迁移到 ROS 1。
 
-Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全更新和生产部署时，必须显式标注 EOL 风险。
+Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全更新和生产部署时，必须显式标注 EOL 风险；需要判断环境是否满足本分支契约时读取 [Noetic 发行版契约](references/distro_compatibility.md)。
 
 ## 核心行为
 
 像资深 ROS 1 架构师和一线调试工程师一样工作：先判断任务规模，再使用足够但不过量的证据。目标不是让 Agent 承担更多运行后工作，而是把系统设计成即使没有 AI，工程师也能通过稳定指标和静态可视化自行分析。
 
 默认只读。只有用户明确要求修改、持久化、发布或操作硬件时才升级权限；涉及写入、bag 回放或真实硬件时读取 [安全与权限](references/safety_and_permissions.md)。
+
+分析现有仓库时，用 [项目理解与证据等级](references/project_understanding.md) 约束能声称到什么程度；不要把静态代码线索说成运行事实。需要设计验证层级、rostest、性能证据或回归时读取 [测试与可观测性](references/testing_and_observability.md)。用户明确要求持久化项目知识，或仓库已有 `.ros_debug_project.yaml` 时，再读取 [项目知识库发现](references/project_discovery.md)。
 
 ## Noetic 技术基线
 
@@ -61,7 +63,7 @@ Noetic 已于 2025-05 结束官方支持。涉及安装、系统依赖、安全�
 ## 选择模式与规模
 
 - `debug`：构建、启动/参数、ROS graph、topic/service/action、TF、时间、进程/线程、性能和算法故障。`micro` 不加载参考；`standard` 读取 [快速调试](references/fast_debugging.md)；`domain` 再读取最多一个领域参考。
-- `architect`：设计或重构系统。`component` / `subsystem` / `system` 读取 [系统架构设计](references/architecture_design.md)，但所有接口和运行时决策都按 Noetic 语义解释。
+- `architect`：设计或重构系统。`node` / `subsystem` / `system` 读取 [系统架构设计](references/architecture_design.md)，但所有接口和运行时决策都按 Noetic 语义解释。
 - `audit`：仅用户明确要求完整追溯或高风险变更需要普通验证以上保证时使用，读取 [审计工作流](references/audit_mode.md)。
 
 ## Token 与上下文预算
@@ -90,7 +92,7 @@ Noetic 领域参考：
 
 ## `architect`：把可分析性设计进去
 
-对普通组件按 [系统架构设计](references/architecture_design.md) 交付职责、接口、进程/线程、失败行为和测试。对 Noetic 项目，优先使用 package/node/nodelet/process 这些真实运行边界，不使用 ROS 2 component/lifecycle/executor 术语替代。
+对普通节点按 [系统架构设计](references/architecture_design.md) 交付职责、接口、进程/线程、失败行为和测试。对 Noetic 项目，优先使用 package/node/nodelet/process 这些真实运行边界，不使用 ROS 2 component/lifecycle/executor 术语替代。
 
 对定位、SLAM、LIO、VIO、融合、复杂优化或长期运行算法，设计时额外读取 [Observation Contract 设计](references/observation_design.md)。不要只设计 `inputs → algorithm → outputs`；同时定义 failure mode 对应的稳定观察量、单位、frame、时间语义、source、有效性和 interpretation。
 
@@ -120,7 +122,7 @@ python3 tools/analysis/analyze_run.py RUN_DIR --strict
 
 ## 运行结果闭环
 
-当任务包含 rosbag1 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 A/B 时，读取 [结果管理](references/result_management.md) 与 [结果可视化](references/result_visualization.md)。SLAM/LIO/VIO 再读取 [SLAM 结果画像](references/slam_visualization_profile.md)。
+当任务包含 rosbag1 回放、算法精度、状态估计、标定、性能、轨迹误差、连续诊断量或 A/B 时，读取 [结果管理](references/result_management.md) 与 [运行结果可视化](references/result_visualization.md)。SLAM/LIO/VIO 再读取 [SLAM 结果画像](references/slam_visualization_profile.md)。
 
 1. 长运行前创建独立 `RUN-*`；标量→`metrics.json`，series→`series/`，正式图→`plots/`，日志→`logs/`。
 2. baseline/candidate 保持相同 bag、参数加载方式、时间和指标定义。

@@ -12,22 +12,29 @@ properties:
     enum: [candidate, measured, verified, deprecated]
   ros:
     type: object
-    required: [families, distributions]
+    required: [families, distributions, build_tools]
     properties:
       families:
         type: array
+        minItems: 1
+        maxItems: 1
         items:
-          enum: [ros1, ros2]
+          const: ros1
         uniqueItems: true
       distributions:
         type: array
+        minItems: 1
+        maxItems: 1
         items:
-          type: string
+          const: noetic
+        uniqueItems: true
       build_tools:
         type: array
+        minItems: 1
         items:
-          type: string
-    additionalProperties: true
+          enum: [catkin, catkin_make, catkin_tools]
+        uniqueItems: true
+    additionalProperties: false
   repository:
     type: object
     required: [branch, commit]

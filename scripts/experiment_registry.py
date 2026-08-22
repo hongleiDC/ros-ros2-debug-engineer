@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create immutable ROS experiment plans, block duplicates, and record results."""
+"""Create immutable ROS Noetic experiment plans, block duplicates, and record results."""
 from __future__ import annotations
 
 import argparse
@@ -26,7 +26,17 @@ from workspace_fingerprint import dirty_hash
 ID_RE = re.compile(r"^EXP-[0-9]{4,}$")
 DEP_NAMES = {"package.xml", "CMakeLists.txt", "setup.py", "setup.cfg", "pyproject.toml", "poetry.lock", "uv.lock", "Pipfile", "Pipfile.lock"}
 DEP_SUFFIXES = (".repos", ".rosinstall")
-EXCLUDED = {".git", "build", "install", "log", "dist", "__pycache__", ".venv", "venv"}
+EXCLUDED = {".git", "build", "devel", "install", "log", "dist", "__pycache__", ".venv", "venv"}
+NOETIC_ENV_NAMES = [
+    "ROS_VERSION",
+    "ROS_DISTRO",
+    "ROS_MASTER_URI",
+    "ROS_IP",
+    "ROS_HOSTNAME",
+    "ROS_PACKAGE_PATH",
+    "CMAKE_PREFIX_PATH",
+    "PYTHONPATH",
+]
 
 
 def now() -> str:
@@ -186,8 +196,10 @@ def create(args: argparse.Namespace) -> int:
     dirty, dirty_fp = dirty_hash(workspace, [knowledge, goal_state])
     current = git(workspace, "rev-parse", "HEAD") or "unknown"
     mainline = args.mainline_commit or git(workspace, "rev-parse", args.mainline_branch) or "unknown"
-    env_names = ["ROS_VERSION", "ROS_DISTRO", "RMW_IMPLEMENTATION", "ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY"]
-    files = [input_record(workspace, p, "data") for p in args.input_file]
+    files = [
+        input_record(workspace, p, "bag" if Path(p).suffix.lower() == ".bag" else "data")
+        for p in args.input_file
+    ]
     files += [input_record(workspace, p, "parameters") for p in args.parameter_file]
     created = now()
     goal_alignment = resolve_goal_alignment(args, knowledge)
@@ -209,12 +221,19 @@ def create(args: argparse.Namespace) -> int:
             "compare_to_experiment_ids": args.compare_to,
         },
         "environment": {
-            "ros_version": os.getenv("ROS_VERSION"), "ros_distro": os.getenv("ROS_DISTRO"),
-            "rmw_implementation": os.getenv("RMW_IMPLEMENTATION"), "ros_domain_id": os.getenv("ROS_DOMAIN_ID"),
-            "operating_system": platform.platform(), "architecture": platform.machine() or "unknown",
-            "container_image": os.getenv("CONTAINER_IMAGE"), "container_digest": os.getenv("CONTAINER_IMAGE_DIGEST"),
-            "middleware_config": {"ros_localhost_only": os.getenv("ROS_LOCALHOST_ONLY")},
-            "environment_variables": {k: os.getenv(k) for k in env_names if os.getenv(k) is not None},
+            "ros_version": os.getenv("ROS_VERSION"),
+            "ros_distro": os.getenv("ROS_DISTRO"),
+            "ros_master_uri": os.getenv("ROS_MASTER_URI"),
+            "ros_ip": os.getenv("ROS_IP"),
+            "ros_hostname": os.getenv("ROS_HOSTNAME"),
+            "ros_package_path": os.getenv("ROS_PACKAGE_PATH"),
+            "cmake_prefix_path": os.getenv("CMAKE_PREFIX_PATH"),
+            "pythonpath": os.getenv("PYTHONPATH"),
+            "operating_system": platform.platform(),
+            "architecture": platform.machine() or "unknown",
+            "container_image": os.getenv("CONTAINER_IMAGE"),
+            "container_digest": os.getenv("CONTAINER_IMAGE_DIGEST"),
+            "environment_variables": {k: os.getenv(k) for k in NOETIC_ENV_NAMES if os.getenv(k) is not None},
         },
         "dependencies": {"manifests": dependency_snapshot(workspace), "declared": args.dependency, "firmware": args.firmware},
         "inputs": {"references": args.input, "files": files, "devices": args.device, "calibrations": args.calibration},

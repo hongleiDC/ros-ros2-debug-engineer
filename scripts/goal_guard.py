@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persist task goals, re-anchor long debugging sessions, and block goal drift."""
+"""Persist ROS Noetic task goals, re-anchor long debugging sessions, and block goal drift."""
 from __future__ import annotations
 
 import argparse
@@ -309,11 +309,17 @@ def start(args: argparse.Namespace) -> int:
                 "files": args.file,
                 "interfaces": args.interface,
                 "environment": {
+                    "target": {"ros_version": "1", "ros_distro": "noetic"},
                     "operating_system": platform.platform(),
                     "architecture": platform.machine() or "unknown",
                     "ros_version": os.getenv("ROS_VERSION"),
                     "ros_distro": os.getenv("ROS_DISTRO"),
-                    "rmw_implementation": os.getenv("RMW_IMPLEMENTATION"),
+                    "ros_master_uri": os.getenv("ROS_MASTER_URI"),
+                    "ros_ip": os.getenv("ROS_IP"),
+                    "ros_hostname": os.getenv("ROS_HOSTNAME"),
+                    "ros_package_path": os.getenv("ROS_PACKAGE_PATH"),
+                    "cmake_prefix_path": os.getenv("CMAKE_PREFIX_PATH"),
+                    "pythonpath": os.getenv("PYTHONPATH"),
                 },
             },
             "progress": {
