@@ -14,6 +14,7 @@ import subprocess
 import sys
 from typing import Dict, List, Optional, Sequence
 
+import yaml
 
 ENV_NAMES = (
     "ROS_VERSION",
@@ -66,6 +67,43 @@ def ensure_run_dirs(run_dir: Path) -> Dict[str, Path]:
 
 def write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def relative_to_run(run_dir: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(run_dir.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
+def register_evidence(run_dir: Path, key: str, path: Path) -> None:
+    manifest_path = run_dir / "manifest.yaml"
+    if not manifest_path.is_file():
+        return
+    try:
+        loaded = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError("cannot update invalid manifest.yaml: %s" % exc)
+    if not isinstance(loaded, dict):
+        raise ValueError("cannot update manifest.yaml: expected a mapping")
+    evidence = loaded.get("ros_evidence")
+    if not isinstance(evidence, dict):
+        evidence = {"snapshot_manifest": None, "roslaunch_logs": None, "bags": []}
+        loaded["ros_evidence"] = evidence
+    value = relative_to_run(run_dir, path)
+    if key == "bags":
+        bags = evidence.get("bags")
+        if not isinstance(bags, list):
+            bags = []
+            evidence["bags"] = bags
+        if value not in bags:
+            bags.append(value)
+    else:
+        evidence[key] = value
+    evidence["updated_utc"] = utc_now()
+    tmp = manifest_path.with_suffix(".yaml.tmp")
+    tmp.write_text(yaml.safe_dump(loaded, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    tmp.replace(manifest_path)
 
 
 def command_text(command: Sequence[str]) -> str:
@@ -133,7 +171,7 @@ def snapshot(args: argparse.Namespace) -> int:
         print(json.dumps({"run_dir": str(run_dir), "commands": planned}, indent=2))
         return 0
 
-    results: List[Dict[str, object]] = []
+    results = []
     for item in SNAPSHOT_COMMANDS:
         name = item[0]
         result = run_capture(item[1:], args.timeout)
@@ -158,7 +196,13 @@ def snapshot(args: argparse.Namespace) -> int:
         "environment": {name: os.getenv(name) for name in ENV_NAMES},
         "commands": results,
     }
-    write_json(log_dir / "snapshot_manifest.json", manifest)
+    snapshot_path = log_dir / "snapshot_manifest.json"
+    write_json(snapshot_path, manifest)
+    try:
+        register_evidence(run_dir, "snapshot_manifest", snapshot_path)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
     print(log_dir)
     return 0
 
@@ -200,11 +244,17 @@ def copy_logs(args: argparse.Namespace) -> int:
             return 3
         shutil.rmtree(str(destination))
     shutil.copytree(str(source), str(destination))
-    write_json(dirs["logs"] / "roslaunch_log_copy.json", {
+    copy_record = dirs["logs"] / "roslaunch_log_copy.json"
+    write_json(copy_record, {
         "copied_utc": utc_now(),
         "source": str(source),
         "destination": str(destination),
     })
+    try:
+        register_evidence(run_dir, "roslaunch_logs", destination)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
     print(destination)
     return 0
 
@@ -215,11 +265,11 @@ def build_bag_command(args: argparse.Namespace, bag_path: Path) -> List[str]:
         command.append("-a")
         return command
 
-    topics: List[str] = []
+    topics = []
     if not args.no_default_topics:
         topics.extend(DEFAULT_BAG_TOPICS)
     topics.extend(args.topic)
-    deduped: List[str] = []
+    deduped = []
     seen = set()
     for topic in topics:
         if topic and topic not in seen:
@@ -253,7 +303,6 @@ def record(args: argparse.Namespace) -> int:
         print("rosbag command was not found; source the ROS Noetic environment first", file=sys.stderr)
         return 127
 
-    returncode = 0
     try:
         returncode = process.wait()
     except KeyboardInterrupt:
@@ -264,13 +313,20 @@ def record(args: argparse.Namespace) -> int:
             process.terminate()
             returncode = process.wait(timeout=5)
 
-    write_json(dirs["logs"] / "rosbag_record_result.json", {
+    result_path = dirs["logs"] / "rosbag_record_result.json"
+    write_json(result_path, {
         "started_utc": started,
         "finished_utc": utc_now(),
         "command": command,
         "bag_path": str(bag_path),
         "returncode": returncode,
     })
+    if bag_path.exists():
+        try:
+            register_evidence(run_dir, "bags", bag_path)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 4
     return int(returncode)
 
 
