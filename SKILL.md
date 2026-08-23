@@ -1,6 +1,6 @@
 ---
 name: ros-noetic-systems-engineer
-description: "ROS 1 Noetic system architecture, debugging, hardware adaptation, rosbag analysis, system profiling and deployment comparison. Locked to ROS_VERSION=1 and ROS_DISTRO=noetic."
+description: "Design, inspect, debug, validate, and compare ROS 1 Noetic systems with evidence-first, token-efficient workflows. Locked to ROS_VERSION=1 and ROS_DISTRO=noetic. Use for catkin/roslaunch runtime issues, hardware-driver-topic mapping, rosbag1 inspection, TF/time, system profiling, deployment diffs, and incremental troubleshooting without repeatedly rescanning unchanged evidence."
 ---
 
 # ROS Noetic 系统架构与调试工程师
@@ -26,6 +26,22 @@ tf/actionlib/nodelet/pluginlib
 ```
 
 不使用 ROS 2 runtime 假设：DDS/RMW/QoS、lifecycle、component、executor、rosbag2、ament/colcon 不作为默认模型。
+
+## 增量工作方式（默认）
+
+为了减少 token 消耗和重复分析：
+
+1. 优先读取已有 evidence、robot_profile 和 provenance，不重复扫描未变化内容。
+2. 使用 profile diff 判断变化域，只刷新变化域。
+3. 保留 unchanged domain 的历史证据。
+4. 只有出现 conflict、基线过期或用户明确要求 audit 时扩大分析范围。
+
+典型流程：
+
+```bash
+python3 scripts/diff_system_profiles.py before.yaml after.yaml --output diff.yaml
+python3 scripts/validate_system_profile.py robot_profile.yaml
+```
 
 ## 工作方式
 
@@ -57,6 +73,7 @@ recorded
 ```bash
 python3 scripts/merge_system_evidence.py ...
 python3 scripts/generate_system_profile.py --merged evidence/merged.json --output robot_profile.yaml
+python3 scripts/validate_system_profile.py robot_profile.yaml
 python3 scripts/diff_system_profiles.py before.yaml after.yaml --output diff.yaml
 ```
 
