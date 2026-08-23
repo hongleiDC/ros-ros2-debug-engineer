@@ -47,6 +47,18 @@ The logger registers produced snapshot/log/bag paths in `RUN_DIR/manifest.yaml` 
 
 Default bag audit topics are `/rosout`, `/rosout_agg`, `/diagnostics`, `/tf`, `/tf_static`, and `/clock`; add project result/input topics explicitly. Do not default to `rosbag record -a` on bandwidth-heavy robots unless the user intentionally wants a full capture.
 
+## ROS-native instrumentation contract
+
+When the existing project does not expose enough evidence, add the smallest useful instrumentation instead of inventing a parallel logging framework:
+
+- use `ROS_DEBUG/ROS_INFO/ROS_WARN/ROS_ERROR/ROS_FATAL` (or rospy logging) for discrete events, mode changes, rejected measurements and failures; these remain visible through rosconsole/`/rosout` and ROS log files;
+- use `diagnostic_msgs/DiagnosticArray` / `diagnostic_updater` for health, status, rates and thresholded subsystem conditions;
+- publish typed ROS topics for numeric time series that must be plotted or replayed later, including a meaningful `header.stamp` and `frame_id` where applicable;
+- record those topics with rosbag1 rather than printing high-rate numeric samples to text logs;
+- keep parameter/configuration snapshots and calibration provenance beside the run so a graph can be interpreted later.
+
+Do not duplicate the same high-rate signal into rosconsole text, CSV and bag during runtime without a clear need. Prefer ROS topic + rosbag1 as the raw record, then derive compact CSV/metrics offline.
+
 ## Storage contract
 
 Do not use text logs as a replacement for numeric data.
