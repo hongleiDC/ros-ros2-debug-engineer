@@ -33,12 +33,16 @@ def _condition(element: ET.Element) -> dict[str, str]:
     return _attrs(element, ("if", "unless"))
 
 
+def _record(element: ET.Element, names: tuple[str, ...]) -> dict[str, str]:
+    record = _attrs(element, names)
+    record.update(_condition(element))
+    return record
+
+
 def _child_records(element: ET.Element, tag: str, names: tuple[str, ...]) -> list[dict[str, str]]:
     records = []
     for child in element.findall(tag):
-        record = _attrs(child, names)
-        record.update(_condition(child))
-        records.append(record)
+        records.append(_record(child, names))
     return records
 
 
@@ -96,15 +100,15 @@ def inspect_launch(path: Path) -> dict[str, Any]:
     tests = [_node_record(e) for e in root.iter("test")]
     args = []
     for e in root.iter("arg"):
-        r = _attrs(e, ("name", "default", "value", "doc")); r.update(_condition(e)); args.append(r)
+        args.append(_record(e, ("name", "default", "value", "doc")))
     includes = []
     for e in root.iter("include"):
-        r: dict[str, Any] = _attrs(e, ("file", "ns", "pass_all_args", "clear_params")); r.update(_condition(e)); r["args"] = _child_records(e, "arg", ("name", "default", "value", "doc")); includes.append(r)
-    groups = []
-    for e in root.iter("group"):
-        r = _attrs(e, ("ns", "clear_params")); r.update(_condition(e)); groups.append(r)
-    params = [_attrs(e, ("name", "value", "type", "textfile", "binfile", "command")) | _condition(e) for e in root.iter("param")]
-    rosparams = [_attrs(e, ("command", "file", "param", "ns", "subst_value")) | _condition(e) for e in root.iter("rosparam")]
+        r: dict[str, Any] = _record(e, ("file", "ns", "pass_all_args", "clear_params"))
+        r["args"] = _child_records(e, "arg", ("name", "default", "value", "doc"))
+        includes.append(r)
+    groups = [_record(e, ("ns", "clear_params")) for e in root.iter("group")]
+    params = [_record(e, ("name", "value", "type", "textfile", "binfile", "command")) for e in root.iter("param")]
+    rosparams = [_record(e, ("command", "file", "param", "ns", "subst_value")) for e in root.iter("rosparam")]
     machines = [_attrs(e, ("name", "address", "env-loader", "default", "user", "password", "timeout")) for e in root.iter("machine")]
     packages = sorted({r.get("pkg", "") for r in nodes + tests if r.get("pkg")})
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -131,16 +135,27 @@ def inspect_launch(path: Path) -> dict[str, Any]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("launch", type=Path); p.add_argument("--format", choices=["json", "yaml"], default="json"); p.add_argument("--output", type=Path)
-    a = p.parse_args(); path = a.launch.expanduser().resolve()
-    if not path.is_file(): raise SystemExit(f"launch file not found: {path}")
-    if path.suffix.lower() not in {".launch", ".xml", ".test"}: raise SystemExit("expected .launch, .xml, or .test")
-    try: payload = inspect_launch(path)
-    except ValueError as exc: raise SystemExit(str(exc)) from exc
+    p.add_argument("launch", type=Path)
+    p.add_argument("--format", choices=["json", "yaml"], default="json")
+    p.add_argument("--output", type=Path)
+    a = p.parse_args()
+    path = a.launch.expanduser().resolve()
+    if not path.is_file():
+        raise SystemExit(f"launch file not found: {path}")
+    if path.suffix.lower() not in {".launch", ".xml", ".test"}:
+        raise SystemExit("expected .launch, .xml, or .test")
+    try:
+        payload = inspect_launch(path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False) if a.format == "yaml" else json.dumps(payload, ensure_ascii=False, indent=2)
-    if a.output: a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(text, encoding="utf-8")
-    else: print(text)
+    if a.output:
+        a.output.parent.mkdir(parents=True, exist_ok=True)
+        a.output.write_text(text, encoding="utf-8")
+    else:
+        print(text)
     return 0
 
 
-if __name__ == "__main__": raise SystemExit(main())
+if __name__ == "__main__":
+    raise SystemExit(main())
