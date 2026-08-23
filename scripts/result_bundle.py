@@ -10,11 +10,11 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Dict, Iterable, List, Optional
 
 import yaml
 
-REQUIRED_DIRS = ("series", "plots", "logs")
+REQUIRED_DIRS = ("series", "plots", "logs", "bags")
 REQUIRED_FILES = ("manifest.yaml", "metrics.json", "report.md")
 PLOT_SUFFIXES = {".png", ".svg", ".pdf"}
 NOETIC_ENV_NAMES = (
@@ -46,24 +46,35 @@ def slug(text: str) -> str:
     return value[:48] or "run"
 
 
-def run_git(workspace: Path, *args: str) -> str | None:
+def run_git(workspace: Path, *args: str) -> Optional[str]:
     try:
-        result = subprocess.run(["git", "-C", str(workspace), *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        result = subprocess.run(
+            ["git", "-C", str(workspace), *args],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
     except (OSError, subprocess.CalledProcessError):
         return None
     return result.stdout.strip()
 
 
-def git_info(workspace: Path | None) -> dict[str, object]:
+def git_info(workspace: Optional[Path]) -> Dict[str, object]:
     if workspace is None:
         return {"workspace": None, "branch": None, "commit": None, "dirty": None}
     commit = run_git(workspace, "rev-parse", "HEAD")
     branch = run_git(workspace, "rev-parse", "--abbrev-ref", "HEAD")
     status = run_git(workspace, "status", "--porcelain")
-    return {"workspace": str(workspace.resolve()), "branch": branch, "commit": commit, "dirty": None if status is None else bool(status)}
+    return {
+        "workspace": str(workspace.resolve()),
+        "branch": branch,
+        "commit": commit,
+        "dirty": None if status is None else bool(status),
+    }
 
 
-def noetic_environment() -> dict[str, object]:
+def noetic_environment() -> Dict[str, object]:
     return {
         "target": {"ros_version": "1", "ros_distro": "noetic"},
         "observed": {name: os.getenv(name) for name in NOETIC_ENV_NAMES},
@@ -74,11 +85,11 @@ def noetic_environment() -> dict[str, object]:
     }
 
 
-def file_records(paths: Iterable[str]) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
+def file_records(paths: Iterable[str]) -> List[Dict[str, object]]:
+    records = []
     for raw in paths:
         path = Path(raw).expanduser().resolve()
-        record: dict[str, object] = {"path": str(path), "exists": path.is_file()}
+        record = {"path": str(path), "exists": path.is_file()}
         if path.is_file():
             record["size_bytes"] = path.stat().st_size
             record["sha256"] = sha256_file(path)
@@ -94,7 +105,7 @@ def atomic_text(path: Path, text: str) -> None:
 
 def build_run_id(label: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"RUN-{stamp}-{slug(label)}"
+    return "RUN-%s-%s" % (stamp, slug(label))
 
 
 def init_bundle(args: argparse.Namespace) -> int:
@@ -102,7 +113,7 @@ def init_bundle(args: argparse.Namespace) -> int:
     run_id = args.run_id or build_run_id(args.label or args.experiment_id)
     run_dir = reports_root / args.experiment_id / run_id
     if run_dir.exists() and any(run_dir.iterdir()) and not args.force:
-        raise SystemExit(f"refusing to overwrite non-empty run directory: {run_dir}")
+        raise SystemExit("refusing to overwrite non-empty run directory: %s" % run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     for name in REQUIRED_DIRS:
         (run_dir / name).mkdir(exist_ok=True)
@@ -117,16 +128,25 @@ def init_bundle(args: argparse.Namespace) -> int:
         "label": args.label,
         "git": git_info(workspace),
         "environment": noetic_environment(),
-        "inputs": {"datasets": file_records(args.dataset_file), "configs": file_records(args.config_file)},
+        "inputs": {
+            "datasets": file_records(args.dataset_file),
+            "configs": file_records(args.config_file),
+        },
         "command": args.command,
         "baseline_run": args.baseline_run,
         "status": "planned",
         "verdict": "pending",
+        "ros_evidence": {
+            "snapshot_manifest": None,
+            "roslaunch_logs": None,
+            "bags": [],
+        },
         "artifacts": {
             "metrics": "metrics.json",
             "series_dir": "series",
             "plots_dir": "plots",
             "logs_dir": "logs",
+            "bags_dir": "bags",
             "report": "report.md",
             "human_report": "report/index.html",
             "analysis_summary": "report/analysis_summary.json",
@@ -136,31 +156,40 @@ def init_bundle(args: argparse.Namespace) -> int:
     metrics = {"schema_version": 1, "run_id": run_id, "metrics": {}}
     atomic_text(run_dir / "metrics.json", json.dumps(metrics, indent=2, ensure_ascii=False) + "\n")
     report = (
-        f"# {args.experiment_id} / {run_id}\n\n"
-        "## Decision\n\nTODO: state the decision first.\n\n"
-        "## Evidence\n\nTODO: cite metrics and plots that support the decision.\n\n"
-        "## Remaining risk\n\nTODO: record only unresolved risks that affect the next decision.\n"
+        "# %s / %s\n\n" % (args.experiment_id, run_id)
+        + "## Decision\n\nTODO: state the decision first.\n\n"
+        + "## Evidence\n\nTODO: cite metrics and plots that support the decision.\n\n"
+        + "## Remaining risk\n\nTODO: record only unresolved risks that affect the next decision.\n"
     )
     atomic_text(run_dir / "report.md", report)
     print(run_dir)
     return 0
 
 
+def _relative_target_exists(run_dir: Path, raw: object) -> bool:
+    if not isinstance(raw, str) or not raw:
+        return False
+    path = Path(raw)
+    if path.is_absolute():
+        return path.exists()
+    return (run_dir / path).exists()
+
+
 def validate_bundle(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir).expanduser().resolve()
-    errors: list[str] = []
-    warnings: list[str] = []
+    errors = []
+    warnings = []
     if not run_dir.is_dir():
-        errors.append(f"missing run directory: {run_dir}")
+        errors.append("missing run directory: %s" % run_dir)
     for name in REQUIRED_DIRS:
         if not (run_dir / name).is_dir():
-            errors.append(f"missing directory: {name}/")
+            errors.append("missing directory: %s/" % name)
     for name in REQUIRED_FILES:
         if not (run_dir / name).is_file():
-            errors.append(f"missing file: {name}")
+            errors.append("missing file: %s" % name)
 
-    manifest: dict[str, object] = {}
-    metrics: dict[str, object] = {}
+    manifest = {}
+    metrics = {}
     manifest_path = run_dir / "manifest.yaml"
     metrics_path = run_dir / "metrics.json"
     report_path = run_dir / "report.md"
@@ -172,7 +201,7 @@ def validate_bundle(args: argparse.Namespace) -> int:
             else:
                 errors.append("manifest.yaml must contain a mapping")
         except yaml.YAMLError as exc:
-            errors.append(f"invalid manifest.yaml: {exc}")
+            errors.append("invalid manifest.yaml: %s" % exc)
     if metrics_path.is_file():
         try:
             loaded = json.loads(metrics_path.read_text(encoding="utf-8"))
@@ -181,11 +210,11 @@ def validate_bundle(args: argparse.Namespace) -> int:
             else:
                 errors.append("metrics.json must contain an object")
         except json.JSONDecodeError as exc:
-            errors.append(f"invalid metrics.json: {exc}")
+            errors.append("invalid metrics.json: %s" % exc)
 
-    for key in ("schema_version", "experiment_id", "run_id", "status", "verdict", "artifacts"):
+    for key in ("schema_version", "experiment_id", "run_id", "status", "verdict", "artifacts", "ros_evidence"):
         if key not in manifest:
-            errors.append(f"manifest.yaml missing key: {key}")
+            errors.append("manifest.yaml missing key: %s" % key)
     if manifest.get("run_id") and metrics.get("run_id") and manifest.get("run_id") != metrics.get("run_id"):
         errors.append("run_id differs between manifest.yaml and metrics.json")
     metric_map = metrics.get("metrics") if isinstance(metrics, dict) else None
@@ -199,6 +228,20 @@ def validate_bundle(args: argparse.Namespace) -> int:
             errors.append("manifest environment target must be ROS 1 Noetic")
         if environment.get("matches_target_if_known") is False:
             warnings.append("captured ROS environment does not match the Noetic target contract")
+
+    ros_evidence = manifest.get("ros_evidence")
+    if isinstance(ros_evidence, dict):
+        for key in ("snapshot_manifest", "roslaunch_logs"):
+            value = ros_evidence.get(key)
+            if value and not _relative_target_exists(run_dir, value):
+                errors.append("ros_evidence.%s points to a missing artifact: %s" % (key, value))
+        bags = ros_evidence.get("bags", [])
+        if bags is not None and not isinstance(bags, list):
+            errors.append("ros_evidence.bags must be a list")
+        elif isinstance(bags, list):
+            for value in bags:
+                if not _relative_target_exists(run_dir, value):
+                    errors.append("ros_evidence.bags points to a missing artifact: %s" % value)
 
     if args.closure:
         if manifest.get("status") != "completed":
@@ -231,11 +274,21 @@ def validate_bundle(args: argparse.Namespace) -> int:
                 if not isinstance(summary, dict) or summary.get("ready_for_human_review") is not True:
                     errors.append("human-analysis validation requires ready_for_human_review: true")
             except json.JSONDecodeError as exc:
-                errors.append(f"invalid report/analysis_summary.json: {exc}")
+                errors.append("invalid report/analysis_summary.json: %s" % exc)
+
+    if args.ros_audit:
+        if not isinstance(ros_evidence, dict):
+            errors.append("ROS audit requires ros_evidence mapping")
+        else:
+            has_snapshot = bool(ros_evidence.get("snapshot_manifest"))
+            has_logs = bool(ros_evidence.get("roslaunch_logs"))
+            has_bag = bool(ros_evidence.get("bags"))
+            if not (has_snapshot or has_logs or has_bag):
+                errors.append("ROS audit requires at least one native ROS snapshot, roslaunch log set, or rosbag1 artifact")
 
     for path in run_dir.iterdir() if run_dir.is_dir() else []:
         if path.is_file() and path.suffix.lower() in {".csv", ".log", ".bag"}:
-            warnings.append(f"top-level raw artifact should live under series/ or logs/: {path.name}")
+            warnings.append("top-level raw artifact should live under series/, logs/, or bags/: %s" % path.name)
 
     result = {"run_dir": str(run_dir), "valid": not errors, "errors": errors, "warnings": warnings}
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -261,6 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("run_dir")
     validate.add_argument("--closure", action="store_true")
     validate.add_argument("--human-analysis", action="store_true", help="also require a ready static human analysis report")
+    validate.add_argument("--ros-audit", action="store_true", help="require at least one registered native ROS evidence artifact")
     validate.set_defaults(func=validate_bundle)
     return parser
 
