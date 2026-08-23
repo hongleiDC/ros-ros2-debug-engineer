@@ -3,7 +3,7 @@
 > **Branch:** `ros1-noetic`  
 > **Skill:** `ros-noetic-systems-engineer`
 
-This branch is the ROS 1 Noetic-specific edition of the project. It is intentionally scoped to **ROS_VERSION=1** and **ROS_DISTRO=noetic** so debugging, system inspection, hardware adaptation, rosbag analysis, TF/time reasoning, and project memory all use ROS 1 semantics instead of mixing ROS 1 and ROS 2 assumptions.
+This branch is the ROS 1 Noetic-specific edition of the project. It is intentionally scoped to **ROS_VERSION=1** and **ROS_DISTRO=noetic** so debugging, system inspection, hardware adaptation, rosbag analysis, TF/time reasoning, project memory, and result auditing all use ROS 1 semantics instead of mixing ROS 1 and ROS 2 assumptions.
 
 ## Purpose
 
@@ -104,22 +104,9 @@ hardware
 → time
 ```
 
-Supported areas include:
+Supported areas include USB/serial, Ethernet, CAN, LiDAR, IMU, GNSS/RTK, cameras and time synchronization.
 
-- USB and serial devices;
-- Ethernet sensors;
-- CAN devices;
-- LiDAR;
-- IMU;
-- GNSS/RTK;
-- cameras;
-- time synchronization.
-
-Reference:
-
-```text
-references/hardware_adaptation.md
-```
+Reference: `references/hardware_adaptation.md`.
 
 ### rosbag1 Analysis
 
@@ -130,8 +117,6 @@ inventory first
 → bounded sampling
 → replay only when required
 ```
-
-Example:
 
 ```bash
 python3 scripts/inspect_rosbag.py run.bag --metadata-only
@@ -160,23 +145,12 @@ The merge process preserves conflicts and missing evidence. It does not automati
 
 The branch supports persistent robot understanding through `robot_profile.yaml`.
 
-Generate:
-
 ```bash
 python3 scripts/generate_system_profile.py \
   --merged evidence/merged.json \
   --output robot_profile.yaml
-```
 
-Validate:
-
-```bash
 python3 scripts/validate_system_profile.py robot_profile.yaml
-```
-
-Compare deployments:
-
-```bash
 python3 scripts/diff_system_profiles.py before.yaml after.yaml --output diff.yaml
 ```
 
@@ -217,8 +191,6 @@ The cache improves efficiency but is not the source of truth. Large bag files ar
 
 ## Profile History and Session Memory
 
-Versioned profiles:
-
 ```bash
 python3 scripts/profile_manager.py save \
   --profile robot_profile.yaml \
@@ -227,19 +199,78 @@ python3 scripts/profile_manager.py save \
 python3 scripts/profile_manager.py list
 ```
 
-Session memory stores only compact verified information:
+Session memory stores only compact verified information: known hardware/drivers, verified TF/time/calibration information, stable assumptions, unresolved unknowns and the last profile version.
 
-- known hardware and drivers;
-- verified TF/time/calibration information;
-- stable assumptions;
-- unresolved unknowns;
-- last profile version.
+Reference: `references/session_memory.md`.
 
-Reference:
+## Human-Auditable Logs, Results, and Visualization
+
+This branch is designed so a user can still review and regenerate results when the Agent is unavailable.
+
+Install project-local analysis tools once:
+
+```bash
+python3 scripts/bootstrap_analysis_tooling.py PROJECT_ROOT --system lio
+```
+
+The generated project tooling includes:
 
 ```text
-references/session_memory.md
+tools/analysis/
+├── result_bundle.py
+├── ros_noetic_run_logger.py
+├── analyze_run.py
+├── plot_localization_result.py
+├── plot_slam_diagnostics.py
+├── plot_series.py
+└── compare_result_metrics.py
 ```
+
+A run should keep separate, reviewable artifacts:
+
+```text
+RUN-xxxx/
+├── manifest.yaml
+├── metrics.json
+├── bags/       rosbag1 high-rate ROS data
+├── series/     normalized numeric series
+├── logs/       native ROS/roslaunch/node evidence
+├── plots/      deterministic offline figures
+└── report/     static human review report
+```
+
+Create a Result Bundle and capture native ROS Noetic evidence:
+
+```bash
+python3 tools/analysis/result_bundle.py init reports EXP-0001 --run-id RUN-001 --workspace .
+python3 tools/analysis/ros_noetic_run_logger.py snapshot RUN_DIR --roswtf
+python3 tools/analysis/ros_noetic_run_logger.py record RUN_DIR --topic /result/topic
+python3 tools/analysis/ros_noetic_run_logger.py copy-logs RUN_DIR
+```
+
+The logger records evidence paths back into `RUN_DIR/manifest.yaml`. Default bag audit topics include `/rosout`, `/rosout_agg`, `/diagnostics`, `/tf`, `/tf_static` and `/clock`; add project-specific result/input topics explicitly.
+
+For arbitrary numeric CSV data, users can regenerate a plot without ChatGPT:
+
+```bash
+python3 tools/analysis/plot_series.py RUN_DIR/series/diagnostics.csv \
+  --x distance_m --y frame_runtime_ms \
+  --output RUN_DIR/plots/runtime.png \
+  --title "Runtime vs distance" --ylabel ms
+```
+
+If a project needs a custom logger or visualization adapter, the Skill should write it into the project's `tools/analysis/` directory with explicit CLI inputs/outputs, signal mapping, units, frame/time semantics, and deterministic saved results. The only working analysis code should never exist only inside an AI conversation.
+
+Generate the static report and validate the run:
+
+```bash
+python3 tools/analysis/analyze_run.py RUN_DIR --strict
+python3 tools/analysis/result_bundle.py validate RUN_DIR --closure --human-analysis
+```
+
+Add `--ros-audit` when native ROS runtime evidence is part of the acceptance requirement. The static report is intended to be opened without a database, service or AI session.
+
+See `references/human_auditable_results.md` and `references/analysis_contract.md`.
 
 ## Recommended Usage Flow
 
@@ -263,19 +294,22 @@ Existing robot:
 5. Save updated baseline
 ```
 
+Experiment/result review:
+
+```text
+1. Create one RUN bundle
+2. Capture native ROS logs/bag/snapshot
+3. Save normalized series and metrics
+4. Run deterministic plotting code
+5. Generate static HTML report
+6. Let the user independently review the evidence and decision
+```
+
 ## Safety Model
 
 The Skill defaults to read-only analysis.
 
-Operations requiring explicit consideration:
-
-- publishing topics;
-- changing parameters;
-- calling state-changing services/actions;
-- loading/unloading nodelets;
-- switching controllers;
-- replaying bags into live systems;
-- interacting with physical actuators.
+Operations requiring explicit consideration include publishing topics, changing parameters, calling state-changing services/actions, loading/unloading nodelets, switching controllers, replaying bags into live systems and interacting with physical actuators.
 
 ## Repository Structure
 
@@ -293,8 +327,6 @@ tests/
 
 ## Validation
 
-Local validation:
-
 ```bash
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
@@ -305,6 +337,4 @@ The packaged Skill should contain reusable resources, not project-specific cache
 
 ## Scope
 
-This README describes only the `ros1-noetic` branch.
-
-This branch is not a generic ROS compatibility layer and does not silently fall back to ROS 2 behavior when the environment does not match Noetic.
+This README describes only the `ros1-noetic` branch. This branch is not a generic ROS compatibility layer and does not silently fall back to ROS 2 behavior when the environment does not match Noetic.
