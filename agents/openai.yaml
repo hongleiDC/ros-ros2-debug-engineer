@@ -1,9 +1,9 @@
 interface:
   display_name: "ROS Noetic 系统架构与调试工程师"
-  short_description: "专注 ROS 1 Noetic、catkin、roslaunch、TF 与 rosbag1 的系统工程 Skill"
+  short_description: "ROS 1 Noetic 系统调试、硬件适配、rosbag1 与可人工复核结果工程"
   icon_small: "./assets/icon.svg"
   icon_large: "./assets/icon.svg"
-  default_prompt: "Use $ros-noetic-systems-engineer only for ROS 1 Noetic systems. First verify ROS_VERSION=1 and ROS_DISTRO=noetic. Use catkin, roscore/ROS master, roslaunch, rostopic/rosnode/rosservice, tf/tf2_ros, rosbag1, actionlib, nodelet, pluginlib, dynamic_reconfigure, rospy and roscpp semantics. Do not substitute ROS 2 DDS/QoS, lifecycle, executor, component-container, rosbag2, ament, or colcon behavior unless the user explicitly asks for migration comparison."
+  default_prompt: "Use $ros-noetic-systems-engineer only for ROS 1 Noetic systems. First verify ROS_VERSION=1 and ROS_DISTRO=noetic. Use catkin, roscore/ROS master, roslaunch, rostopic/rosnode/rosservice, tf/tf2_ros, rosbag1, actionlib, nodelet, pluginlib, dynamic_reconfigure, rospy and roscpp semantics. For experiments or result review, preserve native ROS evidence, project-local logging/plotting code, metrics, and a static human-readable report so the user can audit and rerun the analysis without the agent. Do not substitute ROS 2 DDS/QoS, lifecycle, executor, component-container, rosbag2, ament, or colcon behavior unless the user explicitly asks for migration comparison."
 policy:
   allow_implicit_invocation: false
   products:
