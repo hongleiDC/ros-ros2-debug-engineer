@@ -1,0 +1,8 @@
+template_kind: ros_noetic_system_profile_template
+name: autonomous_vehicle
+summary: Road vehicle with localization, perception and motion control.
+required_evidence: [launch, runtime, hardware, tf_time]
+required_topic_roles: [odometry, control]
+recommended_topic_roles: [lidar, imu, gnss, camera, diagnostics]
+key_frames: [map, odom, base_link]
+refresh_priority: [time, coordinates, control, localization, sensors]

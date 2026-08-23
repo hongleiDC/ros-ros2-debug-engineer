@@ -1,0 +1,8 @@
+template_kind: ros_noetic_system_profile_template
+name: mobile_robot
+summary: Ground mobile robot with odometry and velocity control.
+required_evidence: [launch, runtime, tf_time]
+required_topic_roles: [odometry, control]
+recommended_topic_roles: [lidar, imu, diagnostics]
+key_frames: [map, odom, base_link]
+refresh_priority: [ros_graph, coordinates, time, topics]

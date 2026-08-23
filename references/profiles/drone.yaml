@@ -1,0 +1,8 @@
+template_kind: ros_noetic_system_profile_template
+name: drone
+summary: Aerial robot with inertial state estimation and flight control.
+required_evidence: [launch, runtime, hardware, tf_time]
+required_topic_roles: [imu, odometry, control]
+recommended_topic_roles: [gnss, camera, diagnostics]
+key_frames: [map, odom, base_link, imu_link]
+refresh_priority: [time, imu, odometry, control]

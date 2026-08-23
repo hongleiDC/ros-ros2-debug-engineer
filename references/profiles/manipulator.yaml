@@ -1,0 +1,8 @@
+template_kind: ros_noetic_system_profile_template
+name: manipulator
+summary: ROS Noetic manipulator using joint state and controller interfaces.
+required_evidence: [launch, runtime]
+required_topic_roles: [joint_state, control]
+recommended_topic_roles: [diagnostics]
+key_frames: [base_link, tool0]
+refresh_priority: [drivers, ros_graph, control, coordinates]
