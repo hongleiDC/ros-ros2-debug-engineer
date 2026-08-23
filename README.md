@@ -1,28 +1,48 @@
-# ros-noetic-systems-engineer
+# ROS Noetic Systems Engineer
 
-> Branch: `ros1-noetic`
+> **Branch:** `ros1-noetic`  
+> **Skill:** `ros-noetic-systems-engineer`
 
-这是 `ros-ros2-systems-engineer` 的 **ROS 1 Noetic 专用 Skill 分支**。它不再尝试同时兼容 ROS 1 与 ROS 2，而是把运行时模型、命令、构建系统、硬件适配和 rosbag 分析语义锁定到 ROS Noetic。
+This branch is the ROS 1 Noetic-specific edition of the project. It is intentionally scoped to **ROS_VERSION=1** and **ROS_DISTRO=noetic** so debugging, system inspection, hardware adaptation, rosbag analysis, TF/time reasoning, and project memory all use ROS 1 semantics instead of mixing ROS 1 and ROS 2 assumptions.
 
-## 为什么单独建立 Noetic 分支
+## Purpose
 
-同时兼容 ROS 1 / ROS 2 会让 Skill 在实际项目中缺少明确的版本语义，例如：
+Use this branch for ROS 1 Noetic robots and codebases that require system-level understanding rather than isolated command suggestions.
 
-- ROS 1 Noetic 使用 ROS master/XML-RPC/TCPROS，而不是 DDS/RMW；
-- 使用 catkin，而不是 ament/colcon；
-- 使用 roslaunch XML，而不是 ROS 2 launch；
-- 使用 rosbag1，而不是 rosbag2；
-- roscpp 使用 spinner/callback queue，而不是 ROS 2 executor/callback group；
-- Noetic 没有 ROS 2 QoS compatibility、lifecycle node、component container 等运行时概念。
+The Skill follows an evidence-first workflow:
 
-因此这个分支的第一原则是：**先确认版本，再理解机器、硬件、ROS graph 和数据，最后才定位算法。**
+```text
+machine / OS
+→ catkin workspace and overlay
+→ hardware endpoint
+→ driver / node
+→ topic / message
+→ TF / frame
+→ time source
+→ rosbag1 / recorded data
+→ algorithm
+```
+
+Evidence is always separated into:
+
+```text
+expected      = launch and static configuration
+observed-live = current ROS runtime and hardware
+recorded      = rosbag1 and historical runs
+```
+
+`unknown` is preserved as unknown. Static configuration is not treated as runtime proof.
+
+## Noetic Runtime Contract
+
+Before applying this branch's assumptions:
 
 ```bash
 printenv ROS_VERSION ROS_DISTRO
 rosversion -d
 ```
 
-期望：
+Expected:
 
 ```text
 ROS_VERSION=1
@@ -30,132 +50,261 @@ ROS_DISTRO=noetic
 noetic
 ```
 
-环境不匹配时，Skill 应停止套用 Noetic 假设，而不是自动退回“通用 ROS”回答。
+The branch uses the ROS 1 Noetic model:
 
-## Skill 名称
+- catkin / catkin_make / catkin_tools
+- roslaunch XML
+- roscore / ROS master / XML-RPC
+- TCPROS / UDPROS
+- rostopic / rosnode / rosservice / rosparam
+- tf / tf2_ros
+- rosbag1
+- actionlib
+- nodelet / pluginlib
+- dynamic_reconfigure
+- rospy / roscpp
+
+It does not use ROS 2 assumptions such as DDS/RMW/QoS, lifecycle nodes, component containers, executors, rosbag2, ament or colcon as default runtime models.
+
+> ROS Noetic reached upstream EOL in May 2025. Production deployment should explicitly consider dependency and security maintenance.
+
+## Core Capabilities
+
+### System Inspection
+
+The Skill can analyze:
+
+- catkin workspaces and overlays;
+- roslaunch XML and parameters;
+- ROS graph state;
+- topic/service/action interfaces;
+- TF and time behavior;
+- hardware-to-driver-to-topic chains.
+
+Main helpers:
 
 ```text
-ros-noetic-systems-engineer
+scripts/inspect_workspace.py
+scripts/inspect_launch.py
+scripts/collect_runtime_snapshot.py
+scripts/probe_topic.py
 ```
 
-## Noetic 技术基线
+### Hardware Adaptation
 
-本分支默认使用：
-
-- Ubuntu 20.04；
-- ROS 1 Noetic；
-- catkin / catkin_make / catkin_tools；
-- roscore / ROS master；
-- roslaunch XML；
-- rostopic / rosnode / rosservice / rosparam / rospack / roswtf；
-- TCPROS/UDPROS；
-- tf / tf2_ros；
-- rosbag1；
-- actionlib；
-- nodelet / pluginlib；
-- dynamic_reconfigure；
-- diagnostic_updater；
-- rospy / roscpp。
-
-ROS Noetic 已于 2025-05 结束官方支持，因此安装、系统依赖与生产部署任务必须明确考虑 EOL 风险。
-
-## 新增：现场系统勘察与命令能力
-
-Skill 现在不只“知道 ROS 概念”，而是要求根据问题主动选择 Noetic/Linux 命令建立证据：
+Hardware is analyzed through the complete chain:
 
 ```text
-机器/OS
-→ ROS 环境与 catkin overlay
-→ 物理硬件与端口/IP/CAN
-→ driver package/node
-→ topic/service/action
-→ message type/fields
-→ frame/TF
-→ timestamp/time source
-→ 参数/标定
-→ bag/运行数据
+hardware
+→ Linux device/interface
+→ driver/node
+→ ROS topic
+→ message
+→ frame
+→ time
 ```
 
-命令参考：
+Supported areas include:
 
-- `references/noetic_command_playbook.md`：rospack、rosnode、rostopic、rosservice、rosparam、roslaunch、tf、rosbag、网络与构建命令；
-- `references/hardware_adaptation.md`：USB、串口、Ethernet、CAN、LiDAR、IMU、GNSS/RTK、双天线、Camera 和时间同步。
+- USB and serial devices;
+- Ethernet sensors;
+- CAN devices;
+- LiDAR;
+- IMU;
+- GNSS/RTK;
+- cameras;
+- time synchronization.
 
-首次接触系统时可以做较完整勘察；之后 branch、launch、overlay、硬件、网络、时间、标定或 bag 变化时，只刷新受影响的证据域，并比较 `changed / unchanged / unknown`。
+Reference:
 
-## rosbag topic 深入检查
-
-先 inventory，再抽样，不先 replay：
-
-```bash
-rosbag info run.bag
-rosbag info -y run.bag
-rostopic list -b run.bag
-rostopic echo -b run.bag -n 1 /imu/data
+```text
+references/hardware_adaptation.md
 ```
 
-Skill 内还提供只读 helper：
+### rosbag1 Analysis
+
+The default workflow is:
+
+```text
+inventory first
+→ bounded sampling
+→ replay only when required
+```
+
+Example:
 
 ```bash
 python3 scripts/inspect_rosbag.py run.bag --metadata-only
 python3 scripts/inspect_rosbag.py run.bag --topic /imu/data --topic /points_raw
 ```
 
-目标是明确：topic 名、type、数量/频率、关键 message sample、header stamp/frame、PointCloud2 fields、GNSS/IMU 状态、`/tf` `/tf_static` `/clock`，并把 bag 与实际硬件、driver、TF 和标定对应起来。
+The Skill checks topic contracts, message types, timestamps, frames, PointCloud2 fields, TF/time information and recorded-vs-live differences.
 
-## 调试顺序
+### Evidence Fusion
+
+Multiple evidence sources can be merged:
+
+```bash
+python3 scripts/merge_system_evidence.py \
+  --launch evidence/launch.json \
+  --runtime evidence/runtime.json \
+  --hardware evidence/hardware.json \
+  --tf-time evidence/tf_time.json \
+  --bag evidence/bag.json \
+  --output evidence/merged.json
+```
+
+The merge process preserves conflicts and missing evidence. It does not automatically claim a root cause.
+
+## System Profile
+
+The branch supports persistent robot understanding through `robot_profile.yaml`.
+
+Generate:
+
+```bash
+python3 scripts/generate_system_profile.py \
+  --merged evidence/merged.json \
+  --output robot_profile.yaml
+```
+
+Validate:
+
+```bash
+python3 scripts/validate_system_profile.py robot_profile.yaml
+```
+
+Compare deployments:
+
+```bash
+python3 scripts/diff_system_profiles.py before.yaml after.yaml --output diff.yaml
+```
+
+Profile templates:
 
 ```text
-catkin 构建
-→ roslaunch / 参数
-→ ROS master / graph
-→ topic / service / action
-→ 硬件 / driver
-→ TF / 时间
-→ spinner / callback queue / 资源
-→ 数据 / 算法
+references/profiles/
+├── autonomous_vehicle.yaml
+├── drone.yaml
+├── lidar_imu_rtk.yaml
+├── manipulator.yaml
+└── mobile_robot.yaml
 ```
 
-简单问题保持简单；默认只读；只读取足够区分当前假设的文件和运行时证据。
+## Incremental Workflow (Low Token Usage)
 
-## 运行时快照
-
-```bash
-python3 scripts/collect_runtime_snapshot.py --profile basic
-python3 scripts/collect_runtime_snapshot.py --profile communication
-python3 scripts/collect_runtime_snapshot.py --profile full --detail-limit 20
-```
-
-脚本会检查 `ROS_VERSION=1`、`ROS_DISTRO=noetic` 和 `rosversion -d`。环境不匹配时默认退出，不再静默切换到 ROS 2。
-
-## 长期算法与结果分析
-
-定位、SLAM、LIO、VIO、融合等长期算法仍保留项目级 Observation / Result / Visualization / Human Analysis Contract：
+For long-running projects, the default strategy is incremental updates:
 
 ```text
-Algorithm Contract
-→ Observation Contract
-→ Result Contract
-→ Visualization Contract
-→ Human Analysis Contract
+existing baseline
+→ detect changed evidence
+→ refresh changed domains only
+→ update profile
+→ validate
+→ save new baseline
 ```
 
-一次性初始化：
+Cache:
+
+```text
+.ros_noetic_cache/
+├── manifest.yaml
+├── latest_profile.yaml
+└── session_summary.yaml
+```
+
+The cache improves efficiency but is not the source of truth. Large bag files are never copied into the cache.
+
+## Profile History and Session Memory
+
+Versioned profiles:
 
 ```bash
-python3 scripts/bootstrap_analysis_tooling.py PROJECT_ROOT --system lio
+python3 scripts/profile_manager.py save \
+  --profile robot_profile.yaml \
+  --summary session_summary.yaml
+
+python3 scripts/profile_manager.py list
 ```
 
-每次运行后：
+Session memory stores only compact verified information:
+
+- known hardware and drivers;
+- verified TF/time/calibration information;
+- stable assumptions;
+- unresolved unknowns;
+- last profile version.
+
+Reference:
+
+```text
+references/session_memory.md
+```
+
+## Recommended Usage Flow
+
+New robot:
+
+```text
+1. Confirm ROS Noetic environment
+2. Inspect workspace, launch, hardware, runtime, TF/time and bag
+3. Merge evidence
+4. Generate and validate system profile
+5. Save baseline memory
+```
+
+Existing robot:
+
+```text
+1. Read previous profile and session memory
+2. Check evidence changes
+3. Refresh only affected domains
+4. Compare profiles if needed
+5. Save updated baseline
+```
+
+## Safety Model
+
+The Skill defaults to read-only analysis.
+
+Operations requiring explicit consideration:
+
+- publishing topics;
+- changing parameters;
+- calling state-changing services/actions;
+- loading/unloading nodelets;
+- switching controllers;
+- replaying bags into live systems;
+- interacting with physical actuators.
+
+## Repository Structure
+
+```text
+SKILL.md
+agents/openai.yaml
+scripts/
+references/
+references/profiles/
+tests/
+.github/workflows/
+```
+
+`SKILL.md` remains the control plane. Detailed knowledge is stored in references and loaded only when required to reduce context usage.
+
+## Validation
+
+Local validation:
 
 ```bash
-python3 tools/analysis/analyze_run.py RUN_DIR --strict
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+python scripts/package_skill.py . dist
 ```
 
-生成静态 `RUN_DIR/report/index.html`，保证没有 AI 时工程师仍可复核结果。
+The packaged Skill should contain reusable resources, not project-specific caches, logs or temporary experiment data.
 
-## 分支策略
+## Scope
 
-- `main`：保留当前通用 ROS 1 / ROS 2 Skill；
-- `ros1-noetic`：ROS 1 Noetic 专用；
-- 后续可按同一模式建立 ROS 2 发行版专用分支，例如 Humble、Jazzy 等。
+This README describes only the `ros1-noetic` branch.
+
+This branch is not a generic ROS compatibility layer and does not silently fall back to ROS 2 behavior when the environment does not match Noetic.
