@@ -1,0 +1,24 @@
+template_kind: ros_noetic_system_profile_template
+name: lidar_imu_rtk
+summary: LiDAR IMU GNSS RTK localization or mapping stack.
+required_evidence:
+  - launch
+  - runtime
+  - hardware
+  - tf_time
+  - bag
+required_topic_roles:
+  - lidar
+  - imu
+  - gnss
+required_driver_roles:
+  - lidar
+  - imu
+  - gnss
+recommended_topic_roles:
+  - odometry
+  - diagnostics
+key_frames:
+  - base_link
+  - imu_link
+  - lidar
