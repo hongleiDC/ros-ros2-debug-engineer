@@ -1,0 +1,42 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: robot_profile.schema.yaml
+type: object
+required: [schema_version, profile_kind, generated_at, target, status, completeness, machine, hardware, drivers, ros_graph, topics, coordinates, time, data, risk, provenance]
+properties:
+  schema_version:
+    const: 1
+  profile_kind:
+    const: ros_noetic_system_profile
+  target:
+    type: object
+    required: [ros_version, ros_distro]
+    properties:
+      ros_version:
+        const: '1'
+      ros_distro:
+        const: noetic
+  status:
+    enum: [conflict, partial, consistent_so_far]
+  completeness:
+    type: object
+  machine:
+    type: object
+  hardware:
+    type: object
+  drivers:
+    type: array
+  ros_graph:
+    type: object
+  topics:
+    type: array
+  coordinates:
+    type: object
+  time:
+    type: object
+  data:
+    type: object
+  risk:
+    type: object
+  provenance:
+    type: array
+additionalProperties: true

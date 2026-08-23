@@ -13,6 +13,7 @@
 | 设备 | inspect_system_hardware.py | OS endpoint |
 | TF/time | inspect_tf_time.py | 时间和坐标证据 |
 | 多源证据 | merge_system_evidence.py | 冲突分析 |
+| 整机基线 | generate_system_profile.py | robot_profile.yaml |
 
 ## 证据边界
 
@@ -24,30 +25,13 @@ observed-live
 recorded
 ```
 
-launch 不是运行事实；bag 不是当前部署；topic 名一致不是语义一致。
-
-## TF/time
-
-```bash
-python3 scripts/inspect_tf_time.py --output evidence/tf_time.json
-```
-
-关注：
-
-- /use_sim_time；
-- /clock；
-- /tf /tf_static；
-- tf_monitor；
-- frame pair；
-- host time sync；
-- sensor stamp。
+launch 不是运行事实；bag 不是当前部署；topic 名一致不是语义一致。缺失证据保持 unknown。
 
 ## 合并
 
 ```bash
 python3 scripts/merge_system_evidence.py \
  --launch evidence/launch.json \
- --bag evidence/bag.json \
  --runtime evidence/runtime.json \
  --hardware evidence/hardware.json \
  --tf-time evidence/tf_time.json
@@ -60,5 +44,11 @@ python3 scripts/merge_system_evidence.py \
 3. conflict；
 4. unknown；
 5. 最小下一步证据。
+
+需要整机理解时生成系统画像：
+
+```bash
+python3 scripts/generate_system_profile.py --merged evidence/merged.json
+```
 
 原则：已有证据优先、冲突优先、最小增量采集。
