@@ -1,201 +1,469 @@
-# ROS Noetic 专用运行栈与工具链
+#!/usr/bin/env python3
+"""Merge provenance-aware ROS 1 Noetic evidence into one conservative system model."""
+from __future__ import annotations
 
-本参考用于 Noetic 项目中比基础 topic/service/TF 更专门的运行栈。目标是让 Skill 在看到 `actionlib`、`dynamic_reconfigure`、`nodelet/pluginlib`、`ros_control`、PCL、RViz 或 Gazebo 时，知道应该收集什么证据、使用什么命令，以及哪些动作会改变系统状态。
+import argparse
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import re
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-## 目录
+import yaml
 
-1. actionlib
-2. dynamic_reconfigure
-3. nodelet / pluginlib
-4. ros_control / controller_manager
-5. PCL / PointCloud2
-6. RViz
-7. Gazebo
-8. 组合诊断规则
+ABSOLUTE_DEV_RE = re.compile(r"/dev/[A-Za-z0-9_./:+-]+")
+TYPE_RE = re.compile(r"^Type:\s*(\S+)", re.MULTILINE)
 
-## 1. actionlib
 
-ROS 1 action 通常映射为：
+def _truthy(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "1", "yes", "on"}:
+            return True
+        if text in {"false", "0", "no", "off"}:
+            return False
+    return None
 
-```text
-/<action>/goal
-/<action>/cancel
-/<action>/status
-/<action>/feedback
-/<action>/result
-```
 
-先读：
+def _unique(values: Iterable[Any]) -> List[Any]:
+    result = []
+    seen = set()
+    for value in values:
+        marker = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        if marker not in seen:
+            seen.add(marker)
+            result.append(value)
+    return result
 
-```bash
-rostopic info /ACTION/status
-rostopic type /ACTION/goal
-rostopic hz /ACTION/status
-rostopic echo -n 1 --noarr /ACTION/status
-```
 
-判断时拆开：server 是否存在、goal 是否发出、goal_id 是否一致、status 是否推进、feedback 是否持续、result 是否返回、时间是否有效。不要把“client 超时”直接等价为“算法失败”。
+def _command_key(command: Any) -> Tuple[str, ...]:
+    if isinstance(command, list):
+        return tuple(str(item) for item in command)
+    if isinstance(command, str):
+        return tuple(command.split())
+    return ()
 
-发送 goal/cancel 会改变系统状态，默认不做。
 
-## 2. dynamic_reconfigure
+def _command_results(runtime: Dict[str, Any]) -> List[Dict[str, Any]]:
+    results = []
+    for key in ("commands", "detail_commands"):
+        for item in runtime.get(key, []) or []:
+            if isinstance(item, dict):
+                results.append(item)
+    return results
 
-发现服务端：
 
-```bash
-rosrun dynamic_reconfigure dynparam list
-rosrun dynamic_reconfigure dynparam get /node_name
-```
+def _successful_stdout(runtime: Dict[str, Any], prefix: Sequence[str]) -> List[str]:
+    wanted = tuple(prefix)
+    outputs = []
+    for item in _command_results(runtime):
+        command = _command_key(item.get("command"))
+        if command[: len(wanted)] == wanted and item.get("returncode") == 0:
+            outputs.append(str(item.get("stdout", "")))
+    return outputs
 
-还应核对：
 
-- package 中 `.cfg` 与生成目标；
-- `generate_dynamic_reconfigure_options(...)`；
-- callback 是否在初始化时就被调用；
-- callback 内是否加锁或触发昂贵重建；
-- launch/YAML 初值与运行时值是否冲突；
-- 参数变化后是否真的影响算法路径。
+def _names_from_output(output: str) -> List[str]:
+    names = []
+    for line in output.splitlines():
+        name = line.strip().split(" ", 1)[0]
+        if name.startswith("/") and name not in names:
+            names.append(name)
+    return names
 
-`dynparam set` 是运行时写操作。修改前记录旧值、修改值、预期影响和恢复命令。
 
-## 3. nodelet / pluginlib
+def runtime_names(runtime: Dict[str, Any], kind: str) -> List[str]:
+    command_by_kind = {
+        "node": ("rosnode", "list"),
+        "topic": ("rostopic", "list"),
+        "service": ("rosservice", "list"),
+        "param": ("rosparam", "list"),
+    }
+    prefix = command_by_kind[kind]
+    names = []
+    for output in _successful_stdout(runtime, prefix):
+        names.extend(_names_from_output(output))
+    return _unique(names)
 
-只读检查：
 
-```bash
-rosnode info /nodelet_manager
-rosrun nodelet nodelet list /nodelet_manager
-rospack plugins --attrib=plugin nodelet
-```
+def runtime_topic_types(runtime: Dict[str, Any]) -> Dict[str, str]:
+    result = {}
+    for item in _command_results(runtime):
+        command = _command_key(item.get("command"))
+        if len(command) >= 3 and command[:2] == ("rostopic", "info") and item.get("returncode") == 0:
+            match = TYPE_RE.search(str(item.get("stdout", "")))
+            if match:
+                result[command[2]] = match.group(1)
+        elif len(command) >= 3 and command[:2] == ("rostopic", "type") and item.get("returncode") == 0:
+            text = str(item.get("stdout", "")).strip()
+            if text:
+                result[command[2]] = text.splitlines()[0]
+    return result
 
-静态检查：
 
-- `plugin.xml` 中 library path；
-- class name/type/base_class_type；
-- `package.xml` export；
-- CMake shared library target；
-- manager namespace 与 load args；
-- 插件依赖库是否在当前 overlay 中解析到正确版本。
+def launch_use_sim_time(launch: Dict[str, Any]) -> Optional[bool]:
+    values = []
+    for param in launch.get("params", []) or []:
+        if not isinstance(param, dict):
+            continue
+        name = str(param.get("name", ""))
+        if name in {"/use_sim_time", "use_sim_time"} or name.endswith("/use_sim_time"):
+            parsed = _truthy(param.get("value"))
+            if parsed is not None:
+                values.append(parsed)
+    return values[-1] if values else None
 
-出现“manager 存在但插件不工作”时继续区分：pluginlib 加载失败、`onInit()` 异常、同 manager 内其他插件阻塞、输入 remap 错误、callback queue 饥饿和共享进程崩溃。
 
-`nodelet load/unload` 会改变进程内容，默认不执行。
+def launch_nodes(launch: Dict[str, Any]) -> List[Dict[str, Any]]:
+    records = []
+    for node in launch.get("nodes", []) or []:
+        if not isinstance(node, dict):
+            continue
+        records.append({
+            "name": node.get("name"),
+            "namespace": node.get("ns"),
+            "package": node.get("pkg"),
+            "executable": node.get("type"),
+            "machine": node.get("machine"),
+            "args": node.get("args"),
+            "remaps": node.get("remaps", []),
+            "params": node.get("params", []),
+        })
+    return records
 
-## 4. ros_control / controller_manager
 
-先建立这条链：
+def launch_expected_device_paths(launch: Dict[str, Any]) -> List[str]:
+    candidates = []
+    for hint in launch.get("hardware_hints", []) or []:
+        if isinstance(hint, dict):
+            candidates.append(str(hint.get("value", "")))
+    for node in launch.get("nodes", []) or []:
+        if not isinstance(node, dict):
+            continue
+        candidates.append(str(node.get("args", "")))
+        for param in node.get("params", []) or []:
+            if isinstance(param, dict):
+                for key in ("name", "value", "textfile", "binfile", "command"):
+                    candidates.append(str(param.get(key, "")))
+    paths = []
+    for text in candidates:
+        for match in ABSOLUTE_DEV_RE.findall(text):
+            paths.append(match.rstrip(",;)]}"))
+    return _unique(paths)
 
-```text
-hardware_interface
-→ RobotHW read/write
-→ controller_manager update
-→ controller state
-→ command interface
-→ actuator/hardware
-```
 
-常用只读或查询型命令：
+def bag_topics(bag: Dict[str, Any]) -> List[Dict[str, Any]]:
+    metadata = bag.get("metadata")
+    raw = metadata.get("topics") if isinstance(metadata, dict) else None
+    if raw is None:
+        raw = bag.get("topics", [])
+    result = []
+    for item in raw or []:
+        if isinstance(item, dict) and item.get("topic"):
+            result.append(dict(item))
+    return result
 
-```bash
-rosrun controller_manager controller_manager list
-rosrun controller_manager controller_manager list-types
-rostopic info /joint_states
-rostopic hz /joint_states
-rostopic echo -n 1 --noarr /joint_states
-```
 
-同时查 controller manager namespace、URDF/transmission、joint 名、hardware interface 类型、控制周期、`/use_sim_time`、RobotHW `read()`/`write()` 时序和 diagnostics。
+def bag_sample_summary(bag: Dict[str, Any], topic: str) -> Dict[str, Any]:
+    sampling = bag.get("sampling")
+    if not isinstance(sampling, dict):
+        return {}
+    topics = sampling.get("topics")
+    if not isinstance(topics, dict):
+        return {}
+    entry = topics.get(topic)
+    if not isinstance(entry, dict):
+        return {}
+    summary = entry.get("summary")
+    return dict(summary) if isinstance(summary, dict) else {}
 
-`load`、`unload`、`start`、`stop`、`switch`、spawner/unspawner 都会改变控制状态。真实硬件上必须先确认急停、限位、控制权和回滚方式。
 
-如果 controller 显示 running 但执行器不动，不要直接改增益；先确认 command 是否产生、hardware interface 是否接收、RobotHW write 是否执行、底层总线是否发送以及硬件是否接受。
+def hardware_observed_paths(hardware: Dict[str, Any]) -> List[str]:
+    paths = []
+    for item in hardware.get("devices", []) or []:
+        if isinstance(item, dict) and item.get("exists") and item.get("path"):
+            paths.append(str(item["path"]))
+    candidates = hardware.get("hardware_candidates")
+    if isinstance(candidates, dict):
+        for key in ("serial", "video"):
+            for value in candidates.get(key, []) or []:
+                paths.append(str(value))
+    return _unique(paths)
 
-## 5. PCL / PointCloud2
 
-ROS 侧先读消息结构，不猜 driver 字段：
+def _probe_type(probe: Dict[str, Any]) -> Optional[str]:
+    results = probe.get("results")
+    if not isinstance(results, dict):
+        return None
+    value = results.get("type")
+    if isinstance(value, dict) and value.get("returncode") == 0:
+        text = str(value.get("stdout", "")).strip()
+        if text:
+            return text.splitlines()[0]
+    return None
 
-```bash
-rostopic type /points_raw
-rosmsg show sensor_msgs/PointCloud2
-rostopic hz /points_raw
-rostopic bw /points_raw
-rostopic echo -n 1 /points_raw/header
-rostopic echo -n 1 /points_raw/fields
-```
 
-检查：
+def _source_summary(kind: str, payload: Dict[str, Any], index: int) -> Dict[str, Any]:
+    return {
+        "kind": kind,
+        "index": index,
+        "status": payload.get("status"),
+        "generated_at": payload.get("generated_at"),
+        "target": payload.get("target"),
+        "source_path": payload.get("_source_path"),
+    }
 
-- frame_id；
-- width/height、point_step/row_step；
-- fields 名称、offset、datatype、count；
-- `is_dense`；
-- ring/time/timestamp/intensity 等字段是否真的存在；
-- NaN/Inf、裁剪、坐标尺度和单位；
-- PCL filter 前后点数、频率、带宽和延迟。
 
-`pcl_ros`/`pcl_conversions` 是常见桥接层，但不能仅因 package 存在就认为字段转换正确。离线把 bag 转成 PCD 会创建文件，只在确有需要时执行。
+def merge_evidence(
+    launches: List[Dict[str, Any]],
+    bags: List[Dict[str, Any]],
+    runtimes: List[Dict[str, Any]],
+    hardwares: List[Dict[str, Any]],
+    tf_times: List[Dict[str, Any]],
+    topic_probes: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    sources = []
+    for kind, group in (
+        ("launch", launches),
+        ("bag", bags),
+        ("runtime", runtimes),
+        ("hardware", hardwares),
+        ("tf_time", tf_times),
+        ("topic_probe", topic_probes),
+    ):
+        sources.extend(_source_summary(kind, payload, index) for index, payload in enumerate(group))
 
-## 6. RViz
+    nodes_expected = _unique(node for launch in launches for node in launch_nodes(launch))
+    nodes_observed_live = _unique(name for runtime in runtimes for name in runtime_names(runtime, "node"))
+    services_observed_live = _unique(name for runtime in runtimes for name in runtime_names(runtime, "service"))
+    parameters_observed_live = _unique(name for runtime in runtimes for name in runtime_names(runtime, "param"))
+    live_topics = _unique(name for runtime in runtimes for name in runtime_names(runtime, "topic"))
+    live_types = {}
+    for runtime in runtimes:
+        live_types.update(runtime_topic_types(runtime))
+    for probe in topic_probes:
+        topic = probe.get("topic")
+        probe_type = _probe_type(probe)
+        if topic and probe_type:
+            live_types[str(topic)] = probe_type
+        if topic and str(topic) not in live_topics:
+            live_topics.append(str(topic))
 
-RViz 是观察工具，不是真值来源。常见启动：
+    recorded_by_topic = {}
+    for bag_index, bag in enumerate(bags):
+        for item in bag_topics(bag):
+            topic = str(item["topic"])
+            entry = dict(item)
+            entry["bag_index"] = bag_index
+            sample_summary = bag_sample_summary(bag, topic)
+            if sample_summary:
+                entry["sample_summary"] = sample_summary
+            recorded_by_topic.setdefault(topic, []).append(entry)
 
-```bash
-rviz
-rviz -d config.rviz
-```
+    topics = []
+    conflicts = []
+    for topic in sorted(set(live_topics) | set(recorded_by_topic)):
+        recorded = recorded_by_topic.get(topic, [])
+        recorded_types = sorted({str(item.get("type")) for item in recorded if item.get("type")})
+        live_type = live_types.get(topic)
+        live_present = topic in live_topics
+        recorded_present = bool(recorded)
+        topic_conflicts = []
+        if live_type and recorded_types and any(recorded_type != live_type for recorded_type in recorded_types):
+            topic_conflicts.append({
+                "kind": "topic_type",
+                "topic": topic,
+                "observed_live": live_type,
+                "recorded": recorded_types,
+                "message": "Live and recorded message types differ for the same topic name.",
+            })
+        if len(recorded_types) > 1:
+            topic_conflicts.append({
+                "kind": "recorded_topic_type",
+                "topic": topic,
+                "recorded": recorded_types,
+                "message": "Multiple bags report different message types for the same topic name.",
+            })
+        conflicts.extend(topic_conflicts)
+        if topic_conflicts:
+            status = "conflict"
+        elif live_present and recorded_present:
+            status = "matched_presence"
+        elif live_present:
+            status = "live_only"
+        elif recorded_present:
+            status = "recorded_only"
+        else:
+            status = "unknown"
+        topics.append({
+            "name": topic,
+            "status": status,
+            "live": {"present": live_present, "type": live_type},
+            "recorded": recorded,
+            "conflicts": topic_conflicts,
+        })
 
-诊断重点：
+    expected_sim_values = [launch_use_sim_time(launch) for launch in launches]
+    expected_sim_values = [value for value in expected_sim_values if value is not None]
+    observed_sim_values = []
+    tf_summaries = []
+    for payload in tf_times:
+        summary = payload.get("summary")
+        if isinstance(summary, dict):
+            tf_summaries.append(summary)
+            value = _truthy(summary.get("use_sim_time"))
+            if value is not None:
+                observed_sim_values.append(value)
 
-- Fixed Frame 是否正确；
-- Display 的 topic/type 是否匹配；
-- TF status 是否报错；
-- queue size / decay time 是否只影响显示；
-- PointCloud2、LaserScan、Image、Path、Marker 的 frame/time；
-- 保存的 `.rviz` 是否来自另一套 namespace/frame。
+    time_conflicts = []
+    if expected_sim_values and observed_sim_values:
+        expected_value = expected_sim_values[-1]
+        if any(value != expected_value for value in observed_sim_values):
+            item = {
+                "kind": "use_sim_time",
+                "expected": expected_value,
+                "observed_live": observed_sim_values,
+                "message": "Launch/static expectation and live /use_sim_time differ.",
+            }
+            time_conflicts.append(item)
+            conflicts.append(item)
+    time_model = {
+        "expected_use_sim_time": expected_sim_values[-1] if expected_sim_values else None,
+        "observed_live": tf_summaries,
+        "conflicts": time_conflicts,
+    }
 
-“RViz 看不到”先区分数据不存在、TF 不可用、Fixed Frame 错、显示配置错和渲染/驱动问题。不要把 RViz 视觉异常自动归因于算法。
+    expected_devices = _unique(path for launch in launches for path in launch_expected_device_paths(launch))
+    observed_devices = _unique(path for hardware in hardwares for path in hardware_observed_paths(hardware))
+    differences = []
+    if hardwares:
+        for path in expected_devices:
+            if path not in observed_devices:
+                differences.append({
+                    "kind": "hardware_endpoint",
+                    "expected": path,
+                    "observed_live": observed_devices,
+                    "message": "Expected device path was not present in the hardware snapshot; verify deployment or mapping before treating it as a failure.",
+                })
+    hardware_model = {
+        "expected_device_paths": expected_devices,
+        "observed_device_paths": observed_devices,
+        "candidates": [hardware.get("hardware_candidates", {}) for hardware in hardwares if isinstance(hardware.get("hardware_candidates"), dict)],
+    }
 
-## 7. Gazebo
+    unknowns = []
+    required_groups = {
+        "launch": launches,
+        "runtime": runtimes,
+        "hardware": hardwares,
+        "tf_time": tf_times,
+        "bag": bags,
+    }
+    for kind, group in required_groups.items():
+        if not group:
+            unknowns.append({"kind": kind, "message": "No %s evidence was supplied; that domain remains unknown." % kind})
 
-仿真中首先确认：
+    next_evidence = []
+    if not runtimes:
+        next_evidence.append({"priority": 1, "action": "collect_runtime_snapshot", "tool": "scripts/collect_runtime_snapshot.py", "reason": "Current ROS graph is unknown."})
+    if not tf_times:
+        next_evidence.append({"priority": 2, "action": "inspect_tf_time", "tool": "scripts/inspect_tf_time.py", "reason": "TF/time semantics are unknown."})
+    if not hardwares:
+        next_evidence.append({"priority": 3, "action": "inspect_system_hardware", "tool": "scripts/inspect_system_hardware.py", "reason": "Current hardware endpoints are unknown."})
+    if not bags:
+        next_evidence.append({"priority": 4, "action": "inspect_rosbag", "tool": "scripts/inspect_rosbag.py", "reason": "Recorded-data provenance is unavailable if a bag is part of the incident."})
+    if any(item.get("kind") in {"topic_type", "recorded_topic_type"} for item in conflicts):
+        next_evidence.append({"priority": 1, "action": "verify_message_provenance", "reason": "Resolve message/overlay provenance before debugging algorithm behavior."})
+    if time_conflicts:
+        next_evidence.append({"priority": 1, "action": "verify_time_configuration", "reason": "Expected and live time configuration conflict."})
+    if differences:
+        next_evidence.append({"priority": 2, "action": "verify_device_mapping", "reason": "Expected hardware endpoint is absent from the snapshot."})
+    next_evidence = sorted(_unique(next_evidence), key=lambda item: (item.get("priority", 99), str(item.get("action", ""))))
 
-```bash
-rosparam get /use_sim_time
-rostopic info /clock
-rostopic hz /clock
-rostopic echo -n 1 /gazebo/model_states
-```
+    if conflicts:
+        status = "conflict"
+    elif not sources or unknowns:
+        status = "partial"
+    else:
+        status = "consistent_so_far"
 
-再检查：
+    return {
+        "schema_version": 1,
+        "evidence_kind": "merged_system_evidence",
+        "status": status,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "target": {"ros_version": "1", "ros_distro": "noetic"},
+        "sources": sources,
+        "nodes_expected": nodes_expected,
+        "nodes_observed_live": nodes_observed_live,
+        "services_observed_live": services_observed_live,
+        "parameters_observed_live": parameters_observed_live,
+        "topics": topics,
+        "hardware": hardware_model,
+        "time": time_model,
+        "conflicts": conflicts,
+        "differences": differences,
+        "unknowns": unknowns,
+        "next_evidence": next_evidence,
+        "interpretation_rules": [
+            "expected, observed-live and recorded are different evidence classes.",
+            "unknown is not an error condition.",
+            "matched presence does not prove equivalent payload quality, frame, timing or calibration.",
+            "A hardware path difference may be a deployment change; verify udev/container/device mapping before calling it a failure.",
+            "This aggregator preserves provenance and conflicts; it does not claim automatic root cause.",
+        ],
+    }
 
-- `gazebo_ros` 是否实际启动；
-- world/model/plugin 是否加载；
-- URDF/SDF 与 transmission；
-- plugin namespace/remap；
-- `/clock` 是否推进；
-- 仿真暂停、real-time factor、物理步长；
-- ros_control gazebo plugin 与 controller manager 是否连接。
 
-spawn/delete/set-state 等 Gazebo service 会改变仿真状态。即使不影响真实硬件，也要把它们视为写操作并记录实验条件。
+def load_payload(path: Path) -> Dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    data = json.loads(text) if path.suffix.lower() == ".json" else yaml.safe_load(text)
+    if not isinstance(data, dict):
+        raise ValueError("expected mapping in %s" % path)
+    payload = dict(data)
+    payload["_source_path"] = str(path)
+    return payload
 
-## 8. 组合诊断规则
 
-遇到复杂系统时不要按工具名称分散排查，而是保持一条证据链：
+def _load_many(paths: List[Path]) -> List[Dict[str, Any]]:
+    return [load_payload(path.expanduser().resolve()) for path in paths]
 
-```text
-launch/static config
-→ process/node/nodelet/controller
-→ graph interface
-→ message schema
-→ live rate/bandwidth/delay
-→ TF/time
-→ hardware or simulator endpoint
-→ algorithm state
-```
 
-典型组合：
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("launch", "bag", "runtime", "hardware", "tf-time", "topic-probe"):
+        parser.add_argument("--" + name, action="append", type=Path, default=[])
+    parser.add_argument("--format", choices=["json", "yaml"], default="json")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
 
-- **点云 nodelet 卡住**：manager/plugin → input topic → PointCloud2 fields → callback/CPU → output topic；
-- **导航 action 卡住**：goal/status/result → move_base node → TF/time → costmap/sensor inputs → planner/controller state；
-- **控制器不工作**：controller state → joint_states → command → RobotHW read/write → CAN/Ethernet/serial endpoint；
-- **Gazebo 能跑、实车不能跑**：比较 time source、hardware interface、driver、frame、latency 和控制安全条件，不把仿真成功当作实车验证。
+    try:
+        payload = merge_evidence(
+            _load_many(args.launch),
+            _load_many(args.bag),
+            _load_many(args.runtime),
+            _load_many(args.hardware),
+            _load_many(args.tf_time),
+            _load_many(args.topic_probe),
+        )
+    except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise SystemExit("cannot load evidence: %s" % exc)
+
+    if args.format == "yaml":
+        text = yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
+    else:
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(text, encoding="utf-8")
+    else:
+        print(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
