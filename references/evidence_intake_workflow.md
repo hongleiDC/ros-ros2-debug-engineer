@@ -6,14 +6,14 @@
 
 | 输入 | 工具 | 目标 |
 |-|-|-|
-| launch/test | inspect_launch.py | expected 配置 |
-| bag | inspect_rosbag.py | recorded 数据 |
-| live topic | probe_topic.py | 当前 topic 质量 |
-| ROS现场 | collect_runtime_snapshot.py | graph 基线 |
-| 设备 | inspect_system_hardware.py | OS endpoint |
-| TF/time | inspect_tf_time.py | 时间和坐标证据 |
-| 多源证据 | merge_system_evidence.py | 冲突分析 |
-| 整机基线 | generate_system_profile.py | robot_profile.yaml |
+| launch/test | `scripts/inspect_launch.py` | expected 配置 |
+| bag | `scripts/inspect_rosbag.py` | recorded 数据 |
+| live topic | `scripts/probe_topic.py` | 当前 topic 质量 |
+| ROS现场 | `scripts/collect_runtime_snapshot.py` | graph 基线 |
+| 设备 | `scripts/inspect_system_hardware.py` | OS endpoint |
+| TF/time | `scripts/inspect_tf_time.py` | 时间和坐标证据 |
+| 多源证据 | `scripts/merge_system_evidence.py` | 冲突分析 |
+| 整机基线 | `scripts/generate_system_profile.py` | robot_profile.yaml |
 
 ## 证据边界
 
