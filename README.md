@@ -321,11 +321,12 @@ references/
 references/profiles/
 tests/
 .github/workflows/
+.gitignore
 ```
 
 `SKILL.md` remains the control plane. Detailed knowledge is stored in references and loaded only when required to reduce context usage.
 
-## Validation
+## Validation and Packaging
 
 ```bash
 python -m pip install -r requirements.txt
@@ -333,7 +334,7 @@ python -m unittest discover -s tests -v
 python scripts/package_skill.py . dist
 ```
 
-The packaged Skill should contain reusable resources, not project-specific caches, logs or temporary experiment data.
+The package command always produces `dist/skill.zip`. Repository-only files and local runtime state are excluded from the distributable Skill, including CI/tests, `.ros_noetic_cache/`, `.ros_noetic_profiles/`, `reports/` and `logs/`. The same runtime paths are ignored by Git so local experiments do not accidentally become Skill content.
 
 ## Scope
 
